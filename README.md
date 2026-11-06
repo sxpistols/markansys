@@ -54,13 +54,38 @@ rumus transparan, jadi beberapa nilai berubah — kesimpulan akhirnya tetap sama
 
 1. **DCF (Layar 5):** model Gordon 5 tahun eksplisit. Dikalibrasi supaya kasus dasar
    (pertumbuhan 8%, terminal 3,5%, WACC 10,5%) = **Rp 10.350** persis. Grid sensitivitas
-   dihitung ulang dari model saat slider berubah; nilainya mendekati grid contoh
-   di desain (selisih ~3%).
-2. **Proyek (Layar 6):** WACC = bobot ekuitas × 14% + bobot utang × bunga × (1 − pajak).
-   Dengan rumus ini: 50:50 → 11,29%, 30:70 → 12,42%, 100% → 14,00%, 70:30 → 10,75%.
-   NPV 100% modal sendiri tetap +Rp 142 jt (sama dengan desain). **Skema terbaik tetap
-   50:50, dan 70:30 tetap diskualifikasi** (DSCR di bawah 1,3x). DSCR = arus kas tahun 1 /
-   (bunga tahun 1 + pokok/umur).
+   dihitung ulang dari model saat slider berubah (nilai `sensGrid` di `data.js` hanya
+   dipakai sebagai bentuk grid 3×3, bukan sebagai tabel statis). **Perubahan asumsi
+   2026-11-06:** nilai terminal kini dihitung dari arus kas tahun ke-5, `TV = FCF5 /
+   (WACC − pertumbuhan terminal)`, tanpa satu tahun pertumbuhan terminal tambahan
+   (sebelumnya `FCF5 × (1+terminal) / (WACC − terminal)`). Perubahan minimal ini
+   mendekatkan grid ke tabel acuan FigCraft (DESIGN §9), tapi **tidak mereproduksi
+   kesembilan sel** — tidak ada satu varian model Gordon yang diuji (horizon 3–40
+   tahun, TV dari FCF5 vs FCF6, diskonto mid-year, pertumbuhan memudar) yang cocok
+   dalam ±Rp 50; grid FigCraft kemungkinan ditulis tangan, bukan hasil satu rumus.
+   Residu vs FigCraft (Rp): WACC 9,5% → −122 / +199 / +748; 10,5% → −197 / 0 /
+   +312; 11,5% → −365 / −261 / −56 (kolom terminal 2,5% / 3,5% / 4,5%). Sel tengah
+   tetap Rp 10.350 persis.
+2. **Proyek (Layar 6):** WACC = bobot ekuitas × 14% + bobot utang × bunga (11%),
+   **tanpa tax shield** — mengikuti tabel acuan FigCraft. Bukti: skema 100% modal
+   WACC-nya 14,00% di kedua sisi (jadi biaya ekuitas = 14%), sementara 50:50 di
+   FigCraft 12,55% = 0,5×14% + 0,5×11,1% — artinya FigCraft praktis tidak memakai
+   tax shield (klaim audit lama "biaya ekuitas ≈16,5%" salah, karena tidak konsisten
+   dengan skema 100% modal). Pajak (22%) tetap ditampilkan sebagai data proyek tapi
+   tidak memengaruhi WACC pada model ini. Hasil vs FigCraft: 50:50 → WACC 12,50%
+   (residu −0,05), NPV +Rp 231 jt (+3); 30:70 → 13,10% (+0,02), +Rp 195 jt (−1);
+   100% → 14,00% (0), +Rp 142 jt (0); 70:30 → 11,90% (−0,12), +Rp 268 jt (+7).
+   **Skema terbaik tetap 50:50, dan 70:30 tetap diskualifikasi** (DSCR di bawah 1,3x).
+   DSCR = arus kas tahun 1 / (bunga tahun 1 + pokok/umur): 50:50 = 1,45x (sama
+   persis, dipakai sebagai jangkar), 70:30 = 1,04x (FigCraft 1,15x, residu −0,11),
+   **30:70 = 2,42x vs FigCraft 1,80x (residu +0,62) — tidak tereproduksi.** Kandidat
+   definisi lain yang diuji (cicilan anuitas 11%/14,2%/20%, grace period 1–2 tahun,
+   pokok dibayar menaik/menurun/balloon, bunga atas saldo rata-rata, arus kas setelah
+   pajak) semuanya lebih jauh dari ketiganya sekaligus atau merusak jangkar 1,45x;
+   satu-satunya yang cocok adalah cicilan dengan komponen tetap ~Rp 141 jt/tahun,
+   tapi angka itu tidak ada sumbernya di desain sehingga tidak dipakai (bukan
+   fabrikasi data). Jawaban contoh panel AI sudah disamakan dengan hasil hitungan
+   baru (NPV 50:50 +Rp 231 jt, DSCR 70:30 1,04x).
 3. **Peringkat (Layar 3):** total contoh (82/74/66/48/31) dipakai apa adanya pada bobot
    default, karena tidak persis sama dengan rumus bobot (mis. TLKM 49,15 vs 48 di desain).
    Bila bobot diubah, total dihitung ulang dari rumus.

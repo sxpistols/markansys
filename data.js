@@ -5,6 +5,38 @@
    GitHub Actions seperti DOIntelligence) tanpa mengubah layar. */
 "use strict";
 
+/* ---------- Generator candle sintetis deterministik (seed tetap) ---------- */
+function mulberry32(seed) {
+  return function () {
+    let t = (seed += 0x6D2B79F5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+// Random walk harga saham (Dummy): mulai 9.420, drift naik tipis, dibatasi
+// 9.300-10.090 agar tetap di sekitar support 9.400 / resistance 10.000.
+// Bentuk candle {o, h, l, c} agar tooltip OHLC bisa dipasang di candleChart.
+function genCandles(n, seed) {
+  const rnd = mulberry32(seed);
+  const out = [];
+  let close = 9420;
+  for (let i = 0; i < n; i++) {
+    const o = i === 0 ? 9420 : close;
+    let c = o + (rnd() - 0.47) * 110;
+    c = Math.max(9320, Math.min(10060, c));
+    const h = Math.min(10090, Math.max(o, c) + rnd() * 45);
+    const l = Math.max(9300, Math.min(o, c) - rnd() * 45);
+    out.push({ o: Math.round(o), h: Math.round(h), l: Math.round(l), c: Math.round(c) });
+    close = out[out.length - 1].c;
+  }
+  const last = out[out.length - 1];
+  last.c = 9725;
+  last.h = Math.max(last.h, last.o, 9725);
+  last.l = Math.min(last.l, last.o, 9725);
+  return out;
+}
+
 const DATA = {
   meta: { updated: "6 Nov 2026, 14:32 WIB", idxDelayed: true, source: "IDX (tertunda 15 mnt)" },
 
@@ -42,18 +74,18 @@ const DATA = {
     { kode: "BBRI", nama: "Bank Rakyat Indonesia", harga: 4180, chgRp: 20, chgPct: 0.48, sumber: "IDX (tertunda 15 mnt)", update: "14:32 WIB" },
     { kode: "BMRI", nama: "Bank Mandiri", harga: 5950, chgRp: -25, chgPct: -0.42, sumber: "IDX (tertunda 15 mnt)", update: "14:32 WIB" },
     { kode: "TLKM", nama: "Telkom Indonesia", harga: 2810, chgRp: -30, chgPct: -1.06, sumber: "IDX (tertunda 15 mnt)", update: "14:32 WIB" },
-    { kode: "ASII", nama: "Astra International", harga: 4840, chgRp: 40, chgPct: 0.83, sumber: "IDX (tertunda 15 mnt)", update: "14:32 WIB" },
+    { kode: "ASII", nama: "Astra International", harga: 4860, chgRp: 40, chgPct: 0.83, sumber: "IDX (tertunda 15 mnt)", update: "14:32 WIB" },
     { kode: "GOTO", nama: "GoTo Gojek Tokopedia", harga: 68, chgRp: -2, chgPct: -2.86, sumber: "IDX (tertunda 15 mnt)", update: "14:32 WIB" },
     { kode: "BTC", nama: "Bitcoin", harga: 1520000000, chgRp: 31270000, chgPct: 2.10, sumber: "Penyedia kripto", update: "14:35 WIB" },
     { kode: "ETH", nama: "Ethereum", harga: 52400000, chgRp: 724000, chgPct: 1.40, sumber: "Penyedia kripto", update: "14:35 WIB" }
   ],
 
   ranking: [
-    { kode: "BBCA", nama: "Bank Central Asia", total: 82, fund: 88, tekn: 76, sent: 80, rek: "Layak Diteliti", alasan: "Laba stabil, ROE tinggi, tren harga naik." },
-    { kode: "BBRI", nama: "Bank Rakyat Indonesia", total: 74, fund: 79, tekn: 68, sent: 75, rek: "Layak Diteliti", alasan: "Dividen konsisten, valuasi masih wajar." },
-    { kode: "ASII", nama: "Astra International", total: 66, fund: 70, tekn: 61, sent: 67, rek: "Pantau", alasan: "Valuasi murah, momentum belum kuat." },
-    { kode: "TLKM", nama: "Telkom Indonesia", total: 48, fund: 60, tekn: 35, sent: 46, rek: "Pantau", alasan: "Dividen baik, tren harga melemah." },
-    { kode: "GOTO", nama: "GoTo Gojek Tokopedia", total: 31, fund: 28, tekn: 30, sent: 36, rek: "Hindari Dulu", alasan: "Belum stabil mencetak laba." }
+    { kode: "BBCA", nama: "Bank Central Asia", jenis: "pertumbuhan", total: 82, fund: 88, tekn: 76, sent: 80, rek: "Layak Diteliti", alasan: "Laba stabil, ROE tinggi, tren harga naik." },
+    { kode: "BBRI", nama: "Bank Rakyat Indonesia", jenis: "dividen", total: 74, fund: 79, tekn: 68, sent: 75, rek: "Layak Diteliti", alasan: "Dividen konsisten, valuasi masih wajar." },
+    { kode: "ASII", nama: "Astra International", jenis: "nilai", total: 66, fund: 70, tekn: 61, sent: 67, rek: "Pantau", alasan: "Valuasi murah, momentum belum kuat." },
+    { kode: "TLKM", nama: "Telkom Indonesia", jenis: "dividen", total: 48, fund: 60, tekn: 35, sent: 46, rek: "Pantau", alasan: "Dividen baik, tren harga melemah." },
+    { kode: "GOTO", nama: "GoTo Gojek Tokopedia", jenis: "pertumbuhan", total: 31, fund: 28, tekn: 30, sent: 36, rek: "Hindari Dulu", alasan: "Belum stabil mencetak laba." }
   ],
   weights: { fund: 50, tekn: 35, sent: 15 },
 
@@ -66,22 +98,18 @@ const DATA = {
     teknReasons: ["Harga di atas MA 200 hari.", "RSI 62, belum jenuh beli."],
     sentReasons: ["Berita kuartal ketiga cenderung positif.", "Skor sentimen +0,58."],
     sentiment: 0.58,
-    // 20 candle sintetis (Dummy) — rentang 9.400–10.000.
-    ohlc: [
-      [9420, 9510, 9400, 9480], [9480, 9560, 9460, 9530], [9530, 9580, 9490, 9510],
-      [9510, 9540, 9440, 9470], [9470, 9550, 9450, 9530], [9530, 9620, 9510, 9590],
-      [9590, 9650, 9560, 9610], [9610, 9680, 9590, 9660], [9660, 9700, 9600, 9620],
-      [9620, 9680, 9600, 9660], [9660, 9720, 9640, 9700], [9700, 9760, 9680, 9720],
-      [9720, 9780, 9700, 9740], [9740, 9800, 9720, 9780], [9780, 9840, 9760, 9810],
-      [9810, 9860, 9780, 9820], [9820, 9880, 9800, 9850], [9850, 9900, 9830, 9880],
-      [9880, 9930, 9860, 9900], [9900, 9960, 9880, 9725]
-    ]
+    // 200 candle sintetis DETERMINISTIK (Dummy) — generator seed tetap di
+    // atas file, jadi angkanya sama di setiap render. Candle terakhir
+    // ditutup di harga pasar 9.725.
+    ohlc: genCandles(200, 20261106)
   },
 
   dcf: {
     kode: "BBCA", hargaPasar: 9725, nilaiWajar: 10350, mos: 6.0,
     growth: 8, terminal: 3.5, wacc: 10.5,
     // Grid sensitivitas (WACC x pertumbuhan terminal) dari DESIGN §9.
+    // HANYA dipakai sebagai bentuk grid (3x3) — nilainya dihitung live
+    // dari dcfValue di app.js, bukan dari tabel ini (lihat README).
     sensWacc: [9.5, 10.5, 11.5], sensTerm: [2.5, 3.5, 4.5],
     sensGrid: [
       [10900, 11900, 13200],
@@ -95,6 +123,9 @@ const DATA = {
     arusKas: [450000000, 550000000, 650000000, 750000000, 850000000],
     pajak: 22, bunga: 11,
     // Asumsi rumus (terbuka, bisa diubah): biaya ekuitas 14%, bunga utang 11%.
+    // WACC memakai bunga utang TANPA tax shield (lihat projectMath di app.js):
+    // tabel acuan FigCraft mengimplikasikan biaya utang setelah pajak ~11%,
+    // jadi pajak (22%) tidak memengaruhi WACC pada model ini.
     biayaEkuitas: 14,
     schemes: [
       { label: "50% utang : 50% ekuitas", utang: 50 },
@@ -177,6 +208,7 @@ function fmtSingkat(n) {
   if (a >= 1e12) return "Rp " + (n / 1e12).toLocaleString("id-ID", { maximumFractionDigits: 2 }) + " T";
   if (a >= 1e9) return "Rp " + (n / 1e9).toLocaleString("id-ID", { maximumFractionDigits: 2 }) + " M";
   if (a >= 1e6) return "Rp " + (n / 1e6).toLocaleString("id-ID", { maximumFractionDigits: 2 }) + " jt";
+  if (a >= 1e3) return "Rp " + (n / 1e3).toLocaleString("id-ID", { maximumFractionDigits: 2 }) + " rb";
   return fmtRp(n);
 }
 function scoreColor(s) { return s >= 70 ? "var(--market-up)" : s >= 40 ? "var(--state-warning)" : "var(--market-down)"; }
