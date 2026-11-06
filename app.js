@@ -24,6 +24,9 @@ const state = {
   watchTab: "IDX",
   detailTab: "fundamental",
   alertTab: "aktif",
+  teamMember: "Semua",
+  teamPeriode: "Okt 2026",
+  teamUpload: null,
   query: "",
   newsFilter: { aset: "Semua", sentimen: "Semua" },
   sectorFilter: "Semua", scoreFilter: "Semua",
@@ -724,12 +727,17 @@ function sSentimen() {
 /* ---------- Layar 09 — Modul Tim ---------- */
 function sTim() {
   const t = DATA.team;
+  const member = state.teamMember;
+  const anggota = member === "Semua" ? t.anggota : t.anggota.filter((a) => a.nama === member);
+  const barColor = (a) => a.pct >= 100 ? "var(--market-up)" : a.pct >= 90 ? "var(--chart-1)" : "var(--state-warning)";
+  const statusBadge = (a) => a.pct >= 100 ? "badge-up" : a.pct >= 90 ? "badge-info" : "badge-warn";
   const barChart = vBars({
-    w: 640, h: 200,
-    values: t.anggota.map((a) => Math.round(a.capaian / 1e6)),
-    labels: t.anggota.map((a) => a.nama.split(" ")[0]),
-    colors: t.anggota.map((a) => a.pct >= 100 ? "var(--chart-2)" : a.pct >= 90 ? "var(--chart-1)" : "var(--chart-4)"),
-    formatV: (v) => "Rp " + fmtNum(v) + " jt"
+    w: 392, h: 240,
+    values: anggota.map((a) => Math.round(a.capaian / 1e6)),
+    labels: anggota.map((a) => a.nama.split(" ")[0]),
+    colors: anggota.map((a) => a.pct >= 100 ? "var(--chart-2)" : a.pct >= 90 ? "var(--chart-1)" : "var(--chart-4)"),
+    formatV: (v) => "Rp " + fmtNum(v) + " jt",
+    target: 600, targetLabel: "Target Rp 600 jt"
   });
   const trend = multiLine({
     w: 640, h: 220,
@@ -740,38 +748,60 @@ function sTim() {
       { values: t.tren.sari, color: "var(--chart-4)" },
       { values: t.tren.dimas, color: "var(--chart-6)" }
     ],
+    names: ["Agregat", "Rina", "Bagas", "Sari", "Dimas"],
     labels: t.tren.labels
   });
   return `
+  <div class="row" style="margin-bottom:24px">
+    <select class="input" id="teamPeriode" style="width:160px" aria-label="Periode">
+      <option${state.teamPeriode === "Okt 2026" ? " selected" : ""}>Okt 2026</option>
+      <option${state.teamPeriode === "Sep 2026" ? " selected" : ""}>Sep 2026</option>
+    </select>
+    <select class="input" id="teamMember" style="width:200px" aria-label="Anggota">
+      <option value="Semua"${member === "Semua" ? " selected" : ""}>Semua Anggota</option>
+      ${t.anggota.map((a) => `<option value="${a.nama}"${member === a.nama ? " selected" : ""}>${a.nama}</option>`).join("")}
+    </select>
+  </div>
   <div class="grid grid-4">
     <div class="card"><div class="kpi-label">Capaian vs Target</div><div class="kpi-value">${t.pct}%</div><div class="kpi-sub">Periode ${t.periode}</div></div>
     <div class="card"><div class="kpi-label">Total Capaian</div><div class="kpi-value">${fmtSingkat(t.capaian)}</div><div class="kpi-sub">Target ${fmtSingkat(t.target)}</div></div>
     <div class="card"><div class="kpi-label">Di Atas Target</div><div class="kpi-value">1 anggota</div><div class="kpi-sub">Rina Wulandari (109%)</div></div>
     <div class="card"><div class="kpi-label">Di Bawah Target</div><div class="kpi-value">1 anggota</div><div class="kpi-sub">Dimas Hidayat (72%)</div></div>
   </div>
-  <div class="card mt"><h2>Capaian per Anggota</h2>
-    <table><thead><tr><th>Anggota</th><th class="num">Target</th><th class="num">Capaian</th><th class="num">Persentase</th><th>Progres vs Target</th><th>Status</th></tr></thead>
-    <tbody>${t.anggota.map((a) => `
-      <tr><td><strong>${a.nama}</strong></td><td class="num">${fmtSingkat(a.target)}</td><td class="num">${fmtSingkat(a.capaian)}</td>
-      <td class="num">${a.pct}%</td>
-      <td><div class="score-bar"><span style="width:${Math.min(a.pct, 100)}%;background:${a.pct >= 100 ? "var(--market-up)" : a.pct >= 90 ? "var(--chart-1)" : "var(--state-warning)"}"></span></div></td>
-      <td>${a.status}</td></tr>`).join("")}</tbody></table>
-    <div class="chart-wrap" style="margin-top:16px">${barChart}</div>
-    <div class="card-foot">Garis target Rp 600 jt per anggota. Warna batang mengikuti status capaian.</div>
+  <div class="grid grid-tim mt">
+    <div class="card"><h2>Capaian per Anggota</h2>
+      <table><thead><tr><th>Anggota</th><th class="num">Target</th><th class="num">Capaian</th><th class="num">Persentase</th><th>Status</th></tr></thead>
+      <tbody>${anggota.map((a) => `
+        <tr><td><strong>${a.nama}</strong></td><td class="num">${fmtSingkat(a.target)}</td><td class="num">${fmtSingkat(a.capaian)}</td>
+        <td class="num">${a.pct}%</td>
+        <td><span class="badge ${statusBadge(a)}">${a.status}</span></td></tr>`).join("")}</tbody></table>
+    </div>
+    <div class="card"><h2>Capaian vs Target</h2>
+      <div class="chart-wrap">${barChart}</div>
+      <div class="card-foot">Garis target Rp 600 jt per anggota. Warna batang mengikuti status capaian.</div>
+    </div>
   </div>
-  <div class="card mt"><h2>Tren Capaian (Mei–Okt 2026)</h2>
+  <div class="card mt"><h2>Progres vs Target</h2>
+    ${anggota.map((a) => `
+    <div class="prog-row"><span class="prog-name">${a.nama}</span>
+      <span class="prog-track"><span class="prog-fill" style="width:${Math.min(a.pct, 100)}%;background:${barColor(a)}"></span></span>
+      <span class="prog-pct">${a.pct}%</span></div>`).join("")}
+  </div>
+  <div class="card mt"><div class="row" style="justify-content:space-between"><h2>Tren Capaian (Mei–Okt 2026)</h2><span class="badge badge-dummy">Dummy</span></div>
     <div class="chart-wrap">${trend}</div>
     <div class="legend" style="flex-direction:row;flex-wrap:wrap;gap:16px;margin-top:8px">
       ${[["Agregat", "var(--chart-1)"], ["Rina", "var(--chart-2)"], ["Bagas", "var(--chart-3)"], ["Sari", "var(--chart-4)"], ["Dimas", "var(--chart-6)"]].map(([n, c]) => `<span class="legend-row"><span class="swatch" style="background:${c}"></span>${n}</span>`).join("")}
     </div>
-    <div class="card-foot">Tren disintesis (Dummy).</div>
   </div>
   <div class="grid grid-2 mt">
     <div class="card"><h2>Unggah Laporan</h2>
-      <label class="dropzone" for="fileUpload">Seret file ke sini atau klik untuk memilih (CSV/XLSX)
+      <label class="dropzone" for="fileUpload">Seret file CSV atau XLSX ke sini
       <input type="file" id="fileUpload" accept=".csv,.xlsx,.xls"></label>
+      <button class="btn btn-secondary" type="button" data-action="pick-file" style="margin-top:12px">Pilih File</button>
       <p class="small" style="margin-top:12px">File hanya dibaca di perangkat ini dan tidak diunggah ke server.</p></div>
-    <div class="card"><h2>Temuan</h2><p>${esc(t.temuan)}</p><p class="small">Sumber: laporan tim Oktober 2026 (data contoh).</p></div>
+    <div class="card"><h2>Hasil Analisis Otomatis</h2><p>${esc(t.temuan)}</p>
+      ${state.teamUpload ? `<p class="small" style="margin-top:8px">File ${esc(state.teamUpload.name)}: ${state.teamUpload.rows} baris data dibaca.</p>` : ""}
+      <p class="small">Unggah laporan untuk temuan lainnya.</p></div>
   </div>
   ${disclaimer()}`;
 }
@@ -943,6 +973,7 @@ document.addEventListener("click", (e) => {
     card.innerHTML = `<p class="small">Memuat</p><div style="margin-top:16px"><div class="skeleton" style="width:90%"></div><div class="skeleton" style="width:70%"></div></div>`;
     setTimeout(() => { card.innerHTML = `<p class="small">Berhasil</p><h3>Data berhasil dimuat</h3><p>Koneksi kembali normal. Data terakhir ${DATA.meta.updated}.</p>`; }, 1200);
   } else if (a === "print") window.print();
+  else if (a === "pick-file") { const f = $("#fileUpload"); if (f) f.click(); }
 });
 
 document.addEventListener("input", (e) => {
@@ -971,10 +1002,95 @@ document.addEventListener("change", (e) => {
   else if (el.id === "scoreFilter") { state.scoreFilter = el.value; render(); }
   else if (el.id === "newsAset") { state.newsFilter.aset = el.value; render(); }
   else if (el.id === "newsSentimen") { state.newsFilter.sentimen = el.value; render(); }
+  else if (el.id === "teamPeriode") {
+    if (el.value === "Sep 2026") { toast("Data contoh hanya tersedia untuk Okt 2026."); state.teamPeriode = "Okt 2026"; }
+    else state.teamPeriode = el.value;
+    render();
+  }
+  else if (el.id === "teamMember") { state.teamMember = el.value; render(); }
   else if (el.id === "fileUpload" && el.files.length) {
-    toast("Laporan " + el.files[0].name + " diterima (contoh, tidak diunggah ke server).");
+    processTeamFile(el.files[0]);
     el.value = "";
   }
+});
+
+/* ---------- Unggah laporan tim (baca CSV di perangkat, tanpa unggah) ---------- */
+function processTeamFile(file) {
+  const name = file.name;
+  const ext = name.split(".").pop().toLowerCase();
+  if (ext === "csv") {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const lines = String(reader.result).split(/\r?\n/).filter((l) => l.trim() !== "");
+      const rows = Math.max(0, lines.length - 1); // baris pertama = header
+      state.teamUpload = { name, rows };
+      toast("Laporan " + name + " dibaca: " + rows + " baris data. File hanya dibaca di perangkat ini.");
+      render();
+    };
+    reader.onerror = () => toast("Gagal membaca " + name + ".");
+    reader.readAsText(file);
+  } else if (ext === "xlsx" || ext === "xls") {
+    toast("File " + name + " diterima. Isi XLSX belum bisa dianalisis di perangkat ini — simpan sebagai CSV untuk analisis otomatis.");
+  } else {
+    toast("Format tidak didukung. Unggah file CSV atau XLSX.");
+  }
+}
+document.addEventListener("dragover", (e) => {
+  const dz = e.target.closest && e.target.closest(".dropzone");
+  if (dz) { e.preventDefault(); dz.classList.add("dragging"); }
+});
+document.addEventListener("dragleave", (e) => {
+  const dz = e.target.closest && e.target.closest(".dropzone");
+  if (dz) dz.classList.remove("dragging");
+});
+document.addEventListener("drop", (e) => {
+  const dz = e.target.closest && e.target.closest(".dropzone");
+  if (!dz) return;
+  e.preventDefault();
+  dz.classList.remove("dragging");
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) processTeamFile(f);
+});
+
+/* ---------- Tooltip grafik garis (hover di chart) ---------- */
+function chartTipHide(svg) {
+  if (!svg) return;
+  const tip = svg.parentElement && svg.parentElement.querySelector(".chart-tip");
+  if (tip) tip.hidden = true;
+  const guide = svg.querySelector(".ml-guide");
+  if (guide) guide.setAttribute("visibility", "hidden");
+  svg.querySelectorAll(".ml-dot").forEach((d) => d.setAttribute("r", "3"));
+}
+document.addEventListener("mousemove", (e) => {
+  const svg = e.target.closest && e.target.closest(".ml-chart");
+  if (!svg) return;
+  const rect = svg.getBoundingClientRect();
+  const labels = JSON.parse(svg.dataset.labels);
+  const names = JSON.parse(svg.dataset.names);
+  const series = JSON.parse(svg.dataset.series);
+  const colors = JSON.parse(svg.dataset.colors);
+  const W = 640, padL = 40, padR = 8;
+  const vx = ((e.clientX - rect.left) / rect.width) * W;
+  let i = Math.round((vx - padL) / ((W - padL - padR) / (labels.length - 1)));
+  i = Math.max(0, Math.min(labels.length - 1, i));
+  const X = padL + (i / (labels.length - 1)) * (W - padL - padR);
+  const guide = svg.querySelector(".ml-guide");
+  if (guide) { guide.setAttribute("x1", X.toFixed(1)); guide.setAttribute("x2", X.toFixed(1)); guide.setAttribute("visibility", "visible"); }
+  svg.querySelectorAll(".ml-dot").forEach((d) => d.setAttribute("r", +d.dataset.i === i ? "5.5" : "3"));
+  const tip = svg.parentElement && svg.parentElement.querySelector(".chart-tip");
+  if (tip) {
+    tip.innerHTML = `<div class="tip-title">${labels[i]} 2026</div>` + names.map((n, si) =>
+      `<div class="tip-row"><span class="tip-dot" style="background:${colors[si]}"></span>${n}<b>${series[si][i]}%</b></div>`).join("");
+    tip.hidden = false;
+    const wrap = svg.parentElement.getBoundingClientRect();
+    const left = Math.min(e.clientX - wrap.left + 14, Math.max(0, wrap.width - 190));
+    tip.style.left = left + "px";
+    tip.style.top = Math.max(4, e.clientY - wrap.top - 12) + "px";
+  }
+});
+document.addEventListener("mouseout", (e) => {
+  const svg = e.target.closest && e.target.closest(".ml-chart");
+  if (svg && !(e.relatedTarget && svg.contains(e.relatedTarget))) chartTipHide(svg);
 });
 function applyQuery(q) {
   const needle = q.trim().toLowerCase();

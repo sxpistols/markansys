@@ -3,8 +3,10 @@
    (CSS variables) dan bisa diekspor. */
 "use strict";
 
-function svgEl(w, h, inner) {
-  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-hidden="true">${inner}</svg>`;
+function escAttr(s) { return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;"); }
+
+function svgEl(w, h, inner, attrs = "") {
+  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="aspect-ratio:${w} / ${h}"${attrs} role="img" aria-hidden="true">${inner}</svg>`;
 }
 
 /* Grafik area (histori portofolio / arus kas kumulatif). */
@@ -54,13 +56,18 @@ function donut({ size = 180, thick = 26, segments }) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-hidden="true">${circles}</svg>`;
 }
 
-/* Batang vertikal (NPV per skema, capaian tim). */
-function vBars({ w = 640, h = 220, values, labels, colors, formatV = (v) => v, baselineZero = true }) {
+/* Batang vertikal (NPV per skema, capaian tim). target: garis target opsional (mis. Rp 600 jt). */
+function vBars({ w = 640, h = 220, values, labels, colors, formatV = (v) => v, baselineZero = true, target, targetLabel }) {
   const padB = 24, padT = 28, padL = 8, padR = 8;
   const max = Math.max(...values, 0), min = baselineZero ? 0 : Math.min(...values, 0);
   const Y = (v) => padT + (1 - (v - min) / (max - min || 1)) * (h - padB - padT);
   const n = values.length, slot = (w - padL - padR) / n, bw = Math.min(24, slot * 0.5);
   let out = `<line x1="${padL}" y1="${Y(0)}" x2="${w - padR}" y2="${Y(0)}" stroke="var(--border-strong)" stroke-width="1"/>`;
+  if (target !== undefined && target <= max) {
+    const yt = Y(target);
+    out += `<line x1="${padL}" y1="${yt.toFixed(1)}" x2="${w - padR}" y2="${yt.toFixed(1)}" stroke="var(--state-warning)" stroke-width="1.5" stroke-dasharray="5 4"/>` +
+      `<text x="${w - padR}" y="${Math.max(12, yt - 6).toFixed(1)}" text-anchor="end" class="axis-label" fill="var(--state-warning)">${targetLabel || ("Target " + formatV(target))}</text>`;
+  }
   values.forEach((v, i) => {
     const x = padL + slot * i + (slot - bw) / 2;
     const col = colors ? colors[i] : "var(--chart-1)";
@@ -122,8 +129,8 @@ function candleChart({ w = 720, h = 300, ohlc, maFast = [], maSlow = [], support
   return svgEl(w, h, out);
 }
 
-/* Grafik garis multi-seri (tren tim). */
-function multiLine({ w = 640, h = 220, series, labels, ymin = 60, ymax = 115 }) {
+/* Grafik garis multi-seri (tren tim). Titik di tiap bulan + data untuk tooltip hover. */
+function multiLine({ w = 640, h = 220, series, labels, names = [], ymin = 60, ymax = 115 }) {
   const padL = 40, padB = 22, padT = 10, padR = 8;
   const X = (i) => padL + (i / (labels.length - 1)) * (w - padL - padR);
   const Y = (v) => padT + (1 - (v - ymin) / (ymax - ymin)) * (h - padB - padT);
@@ -132,12 +139,17 @@ function multiLine({ w = 640, h = 220, series, labels, ymin = 60, ymax = 115 }) 
     out += `<line x1="${padL}" y1="${Y(gv)}" x2="${w - padR}" y2="${Y(gv)}" stroke="var(--border-default)" stroke-width="1"/>` +
       `<text x="${padL - 6}" y="${Y(gv) + 4}" text-anchor="end" class="axis-label">${gv}%</text>`;
   });
-  series.forEach((s) => {
+  out += `<line class="ml-guide" x1="${X(0)}" y1="${padT}" x2="${X(0)}" y2="${h - padB}" stroke="var(--border-strong)" stroke-width="1" stroke-dasharray="3 3" visibility="hidden"/>`;
+  series.forEach((s, si) => {
     const pts = s.values.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ");
     out += `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round"/>`;
+    s.values.forEach((v, i) => {
+      out += `<circle class="ml-dot" data-i="${i}" data-s="${si}" cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="3" fill="${s.color}" stroke="var(--surface-card)" stroke-width="1.5"/>`;
+    });
   });
   labels.forEach((lb, i) => {
     out += `<text x="${X(i)}" y="${h - 4}" text-anchor="middle" class="axis-label">${lb}</text>`;
   });
-  return svgEl(w, h, out);
+  const dataAttrs = ` class="ml-chart" data-labels="${escAttr(JSON.stringify(labels))}" data-names="${escAttr(JSON.stringify(names))}" data-series="${escAttr(JSON.stringify(series.map((s) => s.values)))}" data-colors="${escAttr(JSON.stringify(series.map((s) => s.color)))}"`;
+  return svgEl(w, h, out, dataAttrs) + `<div class="chart-tip" hidden></div>`;
 }

@@ -91,7 +91,7 @@ input, select, textarea { font-family: inherit; font-size: 14px; color: var(--te
 .search-box input { border: 0; outline: 0; background: none; flex: 1; min-width: 0; }
 .search-box input::placeholder { color: var(--text-muted); }
 .search-box kbd { font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-default); border-radius: 4px; padding: 1px 5px; font-family: inherit; }
-#view { padding: 24px 32px 16px; max-width: 1200px; width: 100%; margin: 0 auto; }
+#view { padding: 24px 32px 16px; max-width: 1680px; width: 100%; margin: 0 auto; }
 
 /* ---------- Buttons, badges, inputs ---------- */
 .btn {
@@ -164,6 +164,7 @@ input[type="range"] { width: 100%; accent-color: var(--primary-default); }
 .grid-2 { grid-template-columns: repeat(2, 1fr); }
 .grid-2-1 { grid-template-columns: 2fr 1fr; }
 .grid-1-2 { grid-template-columns: 1fr 2fr; }
+.grid-tim { grid-template-columns: 1.58fr 1fr; }
 .stack { display: flex; flex-direction: column; gap: 24px; }
 .row { display: flex; align-items: center; gap: 12px; }
 .space-between { justify-content: space-between; }
@@ -175,7 +176,7 @@ input[type="range"] { width: 100%; accent-color: var(--primary-default); }
 
 table { width: 100%; border-collapse: collapse; }
 th { font-size: 13px; font-weight: 500; color: var(--text-muted); text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border-default); }
-td { padding: 12px; border-bottom: 1px solid var(--border-default); vertical-align: middle; }
+td { padding: 14px 12px; border-bottom: 1px solid var(--border-default); vertical-align: middle; }
 tbody tr:hover { background: var(--surface-raised); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 tr.clickable { cursor: pointer; }
@@ -197,6 +198,14 @@ tr.clickable { cursor: pointer; }
 .score-bar { height: 6px; border-radius: 999px; background: var(--surface-raised); overflow: hidden; min-width: 120px; }
 .score-bar > span { display: block; height: 100%; border-radius: 999px; }
 
+/* progress per anggota (Modul Tim, FigCraft Layar 9) */
+.prog-row { display: flex; align-items: center; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--border-default); }
+.prog-row:last-child { border-bottom: 0; padding-bottom: 4px; }
+.prog-name { flex: 0 0 160px; font-weight: 500; }
+.prog-track { flex: 1; height: 8px; border-radius: 999px; background: var(--surface-raised); overflow: hidden; }
+.prog-fill { display: block; height: 100%; border-radius: 999px; }
+.prog-pct { flex: 0 0 64px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+
 /* reason cards */
 .reason { border: 1px solid var(--border-default); border-radius: 12px; padding: 16px; background: var(--surface-card); }
 .reason h3 { margin-bottom: 4px; }
@@ -213,8 +222,17 @@ tr.clickable { cursor: pointer; }
 .heatmap .hm-cell.active { border-color: var(--primary-default); }
 
 /* charts */
-.chart-wrap { width: 100%; }
+.chart-wrap { width: 100%; position: relative; }
 .chart-wrap svg { display: block; width: 100%; height: auto; }
+.chart-tip {
+  position: absolute; z-index: 5; pointer-events: none; min-width: 160px;
+  background: var(--surface-raised); border: 1px solid var(--border-strong); border-radius: 8px;
+  padding: 8px 10px; font-size: 12px; line-height: 18px; box-shadow: 0 4px 16px rgba(0,0,0,.25);
+}
+.chart-tip .tip-title { font-weight: 600; margin-bottom: 4px; }
+.chart-tip .tip-row { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); }
+.chart-tip .tip-row b { margin-left: auto; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.chart-tip .tip-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
 .axis-label { font-size: 11px; fill: var(--text-muted); }
 .legend { display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
 .legend-row { display: flex; align-items: center; gap: 8px; }
@@ -263,9 +281,10 @@ tr.clickable { cursor: pointer; }
 .toast { background: var(--surface-raised); color: var(--text-primary); border: 1px solid var(--border-default); border-radius: 8px; padding: 10px 16px; font-size: 14px; box-shadow: var(--shadow-modal); }
 
 /* dropzone */
-.dropzone { border: 1.5px dashed var(--border-strong); border-radius: 12px; padding: 32px 16px; text-align: center; color: var(--text-secondary); cursor: pointer; }
+.dropzone { border: 1.5px dashed var(--border-strong); border-radius: 12px; padding: 24px 16px; text-align: center; color: var(--text-secondary); cursor: pointer; display: block; }
 .dropzone:hover { border-color: var(--primary-default); background: var(--primary-subtle); }
-.dropzone input { display: none; }
+.dropzone.dragging { border-color: var(--primary-default); background: var(--primary-subtle); border-style: solid; }
+.dropzone input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
 
 /* skeleton */
 .skeleton { height: 16px; border-radius: 8px; background: var(--surface-raised); margin-bottom: 12px; }
