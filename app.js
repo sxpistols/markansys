@@ -216,7 +216,8 @@ function openAI() {
   state.aiOpen = true;
   $("#aiPanel").hidden = false;
   $("#aiOverlay").hidden = false;
-  $("#aiContext").textContent = DATA.ai.konteks;
+  const ctxRoute = currentRoute() === "ai" ? "detail" : currentRoute();
+  $("#aiContext").textContent = "Sedang melihat: " + (TITLES[ctxRoute] || "Ringkasan Portofolio");
   if (!$("#aiMessages").children.length) {
     aiAddMsg(DATA.ai.jawaban, "ai");
     $("#aiChips").innerHTML = DATA.ai.saran.map((s) => `<button class="chip" data-chip="${esc(s)}">${esc(s)}</button>`).join("");

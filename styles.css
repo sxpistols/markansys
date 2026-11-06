@@ -235,6 +235,9 @@ tr.clickable { cursor: pointer; }
   background: var(--surface-card); border-left: 1px solid var(--border-default);
   display: flex; flex-direction: column; box-shadow: var(--shadow-modal);
 }
+/* display:flex di atas mengalahkan atribut hidden bawaan browser,
+   sehingga panel tidak pernah hilang. Aturan ini memperbaikinya. */
+#aiPanel[hidden], #aiOverlay[hidden] { display: none; }
 .ai-head { display: flex; align-items: center; gap: 8px; padding: 16px; border-bottom: 1px solid var(--border-default); }
 .ai-head strong { font-size: 16px; }
 .ai-head .icon-btn { margin-left: auto; }
