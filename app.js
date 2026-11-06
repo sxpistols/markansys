@@ -270,7 +270,7 @@ function sRingkasan() {
   const rows = pos.map((r) => `
     <tr class="clickable" data-action="goto-detail" data-kode="${r.kode}">
       <td><strong>${r.kode}</strong><div class="sub">${esc(r.nama)}</div></td>
-      <td class="num">${fmtNum(r.jumlah)} ${r.satuan}</td>
+      <td class="num">${fmtNum(r.jumlah, Number.isInteger(r.jumlah) ? 0 : 2)} ${r.satuan}</td>
       <td class="num">${fmtRp(r.avg)}</td>
       <td class="num">${fmtRp(r.harga)}</td>
       <td class="num">${fmtRp(r.nilai)}</td>

@@ -92,7 +92,6 @@ input, select, textarea { font-family: inherit; font-size: 14px; color: var(--te
 .search-box input::placeholder { color: var(--text-muted); }
 .search-box kbd { font-size: 11px; color: var(--text-muted); border: 1px solid var(--border-default); border-radius: 4px; padding: 1px 5px; font-family: inherit; }
 #view { padding: 24px 32px 16px; max-width: 1200px; width: 100%; margin: 0 auto; }
-#pageFoot { padding: 0 32px 24px; max-width: 1200px; width: 100%; margin: 0 auto; font-size: 12px; line-height: 18px; color: var(--text-muted); }
 
 /* ---------- Buttons, badges, inputs ---------- */
 .btn {
@@ -288,7 +287,6 @@ tr.clickable { cursor: pointer; }
   .search-box { width: 100%; order: 3; }
   .search-box kbd { display: none; }
   #view { padding: 16px 16px 90px; }
-  #pageFoot { padding: 0 16px 90px; }
   .grid-4 { grid-template-columns: repeat(2, 1fr); }
   #bottombar {
     display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
