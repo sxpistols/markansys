@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Asisten Analisis Investasi</title>
+<meta name="description" content="Analisis saham dan kelayakan proyek, dalam satu tempat.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%233B82F6'/%3E%3Crect x='8' y='16' width='4' height='8' rx='1' fill='white'/%3E%3Crect x='14' y='11' width='4' height='13' rx='1' fill='white'/%3E%3Crect x='20' y='7' width='4' height='17' rx='1' fill='white'/%3E%3C/svg%3E">
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="2" y="10" width="4" height="7" rx="1" fill="#3B82F6"/><rect x="8" y="6" width="4" height="11" rx="1" fill="#3B82F6"/><rect x="14" y="2" width="4" height="15" rx="1" fill="#3B82F6"/></svg>
+      </span>
+      <span class="brand-text"><strong id="brandName">Asisten Analisis</strong><span id="brandSub">Investasi</span></span>
+    </div>
+    <nav id="nav" aria-label="Navigasi utama"></nav>
+    <div class="sidebar-foot">
+      <div>Data: IDX tertunda 15 mnt</div>
+      <div>Dummy &middot; 6 Nov 2026</div>
+    </div>
+  </aside>
+
+  <div id="main">
+    <header id="topbar">
+      <h1 id="pageTitle">Ringkasan Portofolio</h1>
+      <div class="topbar-right">
+        <div class="search-box">
+          <span aria-hidden="true">&#128269;</span>
+          <input id="globalSearch" type="search" placeholder="Cari aset&hellip;" aria-label="Cari aset">
+          <kbd>Ctrl+K</kbd>
+        </div>
+        <span class="badge badge-delayed">Tertunda 15 mnt</span>
+        <button id="themeToggle" class="icon-btn" title="Ganti tema" aria-label="Ganti tema">&#9790;</button>
+        <button id="aiOpenBtn" class="btn btn-primary btn-small">Asisten AI</button>
+      </div>
+    </header>
+    <main id="view" tabindex="-1"></main>
+    <footer id="pageFoot">Informasi ini bersifat analisis pendukung, bukan nasihat investasi. Keputusan sepenuhnya ada pada Anda.</footer>
+  </div>
+</div>
+
+<nav id="bottombar" aria-label="Navigasi mobile"></nav>
+
+<div id="aiOverlay" class="overlay" hidden></div>
+<aside id="aiPanel" aria-label="Panel Asisten AI" hidden>
+  <div class="ai-head">
+    <strong>Asisten AI</strong>
+    <span class="badge badge-info" id="aiContext">Sedang melihat: Ringkasan</span>
+    <button id="aiCloseBtn" class="icon-btn" aria-label="Tutup panel AI">&times;</button>
+  </div>
+  <div id="aiMessages" class="ai-messages"></div>
+  <div class="ai-chips" id="aiChips"></div>
+  <div class="ai-input-row">
+    <input id="aiInput" type="text" placeholder="Tanya tentang portofolio atau saham&hellip;" aria-label="Tanya Asisten AI">
+    <button id="aiSendBtn" class="btn btn-primary" aria-label="Kirim pertanyaan">&#10148;</button>
+  </div>
+  <p class="ai-disclaimer">Jawaban AI bersifat analisis pendukung, bukan nasihat investasi.</p>
+</aside>
+
+<div id="modalRoot"></div>
+<div id="toastRoot" aria-live="polite"></div>
+
+<script src="data.js"></script>
+<script src="charts.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
