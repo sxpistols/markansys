@@ -210,6 +210,7 @@ function render() {
     brandSub.style.display = "none";
   }
   const fn = SCREENS[r] || SCREENS.ringkasan;
+  destroyCharts();
   $("#view").innerHTML = fn();
   /* G6 (sentral): semua data di aplikasi ini data contoh — bila layar
      belum menampilkan badge Dummy, sisipkan satu baris badge di atas
@@ -224,6 +225,7 @@ function render() {
   /* 10.5: konteks panel AI ikut berubah saat navigasi dengan panel terbuka. */
   if (state.aiOpen) updateAiContext();
   afterRender(r);
+  mountCharts();
   if (r === "ai") openAI();
   window.scrollTo(0, 0);
 }
@@ -393,7 +395,7 @@ function sRingkasan() {
     formatY: (v) => "Rp " + fmtNum(v / 1000, 2) + " M"
   });
   const alloc = p.allocation;
-  const donutSvg = donut({ size: 180, thick: 26, segments: alloc.map((a) => ({ value: a.pct, color: a.color })) });
+  const donutSvg = donut({ size: 180, thick: 26, segments: alloc.map((a) => ({ value: a.pct, color: a.color })), center: { title: fmtSingkat(kpi.total), sub: "Total" } });
   const rows = pos.map((r) => {
     const nilai = posNilai(r), pnl = posPnl(r), pnlPct = posPnlPct(r);
     const bobot = kpi.total ? (nilai / kpi.total) * 100 : 0;
@@ -428,7 +430,7 @@ function sRingkasan() {
     <div class="card">
       <div class="card-head"><h2>Alokasi per Kelas Aset</h2></div>
       <div class="donut-flex">
-        <div class="donut-box">${donutSvg}<div class="donut-center"><strong>${fmtSingkat(kpi.total)}</strong><span class="small">Total</span></div></div>
+        <div class="donut-box">${donutSvg}</div>
         <div class="legend">${alloc.map((a) => `<div class="legend-row"><span class="swatch" style="background:${a.color}"></span>${a.label}<span class="val">${a.pct}%</span></div>`).join("")}</div>
       </div>
       <div class="card-foot">Saham IDX mendominasi &middot; Data dummy</div>
@@ -691,15 +693,34 @@ function sDetail() {
 }
 
 /* ---------- Layar 05/* ---------- Layar 05 — Valuasi Saham (DCF) ---------- */
+/* Heatmap DCF (Chart.js): grid dihitung dari model yang sama seperti
+   sebelumnya (dcfValue per kombinasi WACC x pertumbuhan terminal).
+   Asumsi kontrak W2: heatmapMatrix({rows, cols, values, active, formatV})
+   mengembalikan markup canvas (terdaftar via queueChart); rows = label
+   WACC, cols = label pertumbuhan terminal, values = grid 2D angka,
+   active = { r, c } sel asumsi saat ini, formatV = pemformat nilai sel.
+   Mengembalikan markup canvas Chart.js (matrix). */
+function dcfHeatHTML() {
+  const d = state.dcf;
+  const grid = DATA.dcf.sensGrid.map((row, i) =>
+    row.map((_, j) => Math.round(dcfValue(d.growth, DATA.dcf.sensTerm[j], DATA.dcf.sensWacc[i]))));
+  const ai = DATA.dcf.sensWacc.indexOf(d.wacc);
+  const aj = DATA.dcf.sensTerm.indexOf(d.terminal);
+  return heatmapMatrix({
+    rows: DATA.dcf.sensWacc.map((w) => fmtNum(w, 1) + "%"),
+    cols: DATA.dcf.sensTerm.map((t) => fmtNum(t, 1) + "%"),
+    values: grid,
+    active: ai >= 0 && aj >= 0 ? { r: ai, c: aj } : null,
+    formatV: (v) => fmtRp(v)
+  });
+}
+
 function sDCF() {
   const d = state.dcf;
   const fv = dcfValue(d.growth, d.terminal, d.wacc);
   const mos = ((fv - DATA.dcf.hargaPasar) / DATA.dcf.hargaPasar) * 100;
   const verdict = mos >= 5 ? "Wajar cenderung murah" : mos >= -5 ? "Wajar" : "Mahal";
   const proj = dcfProjection(d.growth, d.wacc);
-  const grid = DATA.dcf.sensGrid.map((row, i) =>
-    row.map((_, j) => Math.round(dcfValue(d.growth, DATA.dcf.sensTerm[j], DATA.dcf.sensWacc[i]))));
-  const minV = Math.min(...grid.flat()), maxV = Math.max(...grid.flat());
   const slider = (label, key, min, max, step, unit) => `
     <div class="field"><label>${label} <strong class="num" style="float:right">${fmtNum(d[key], 1)}${unit}</strong></label>
     <input type="range" min="${min}" max="${max}" step="${step}" value="${d[key]}" data-dcf="${key}" aria-label="${label}"></div>`;
@@ -741,14 +762,7 @@ function sDCF() {
   </div>
   <div class="grid grid-2 mt">
     <div class="card"><h2>Sensitivitas Nilai Wajar</h2><p class="small">WACC x pertumbuhan terminal (Rp). Dihitung ulang dari model saat slider berubah.</p>
-      <div class="heatmap" id="dcfHeat" style="margin-top:12px">
-        <div></div>${DATA.dcf.sensTerm.map((t) => `<div class="hm-head">${fmtNum(t, 1)}%</div>`).join("")}
-        ${grid.map((row, i) => `<div class="hm-row">${fmtNum(DATA.dcf.sensWacc[i], 1)}%</div>${row.map((v, j) => {
-          const t = (v - minV) / (maxV - minV || 1);
-          const active = DATA.dcf.sensWacc[i] === d.wacc && DATA.dcf.sensTerm[j] === d.terminal;
-          return `<div class="hm-cell ${active ? "active" : ""}" style="background:color-mix(in srgb, var(--surface-card) ${Math.round((1 - t) * 100)}%, var(--primary-default) ${Math.round(t * 100)}%)">${fmtRp(v)}</div>`;
-        }).join("")}`).join("")}
-      </div>
+      <div id="dcfHeat" style="margin-top:12px">${dcfHeatHTML()}</div>
     </div>
     <div class="card"><h2>Cara Membaca</h2>
       <p>Sel paling gelap adalah nilai wajar tertinggi. Sel berbingkai adalah asumsi saat ini: WACC ${fmtNum(d.wacc, 1)}% dan pertumbuhan terminal ${fmtNum(d.terminal, 1)}%.</p>
@@ -880,7 +894,8 @@ function sSentimen() {
       { value: counts.Positif, color: "var(--market-up)" },
       { value: counts.Netral, color: "var(--market-flat)" },
       { value: counts.Negatif, color: "var(--market-down)" }
-    ]
+    ],
+    center: { title: String(total), sub: "berita" }
   });
   let news = DATA.news;
   if (state.newsFilter.aset !== "Semua") news = news.filter((n) => n.aset.includes(state.newsFilter.aset));
@@ -892,7 +907,7 @@ function sSentimen() {
   <div class="grid grid-2">
     <div class="card"><h2>Ringkasan Sentimen Pasar</h2>
       <div class="donut-flex" style="margin-top:12px">
-        <div class="donut-box">${donutSvg}<div class="donut-center"><strong>${total}</strong><span class="small">berita</span></div></div>
+        <div class="donut-box">${donutSvg}</div>
         <div class="legend">
           <div class="legend-row"><span class="swatch" style="background:var(--market-up)"></span>Positif<span class="val">${Math.round((counts.Positif / total) * 100)}%</span></div>
           <div class="legend-row"><span class="swatch" style="background:var(--market-flat)"></span>Netral<span class="val">${Math.round((counts.Netral / total) * 100)}%</span></div>
@@ -1100,14 +1115,8 @@ function updateDCF() {
     `<tr><td>Nilai kini (indeks)</td>${proj.map((r) => `<td class="num">${projDisp(r).pv}</td>`).join("")}</tr>`;
   const heat = document.getElementById("dcfHeat");
   if (heat) {
-    const grid = DATA.dcf.sensGrid.map((row, i) => row.map((_, j) => Math.round(dcfValue(d.growth, DATA.dcf.sensTerm[j], DATA.dcf.sensWacc[i]))));
-    const minV = Math.min(...grid.flat()), maxV = Math.max(...grid.flat());
-    heat.innerHTML = `<div></div>${DATA.dcf.sensTerm.map((t) => `<div class="hm-head">${fmtNum(t, 1)}%</div>`).join("")}` +
-      grid.map((row, i) => `<div class="hm-row">${fmtNum(DATA.dcf.sensWacc[i], 1)}%</div>${row.map((v, j) => {
-        const t = (v - minV) / (maxV - minV || 1);
-        const active = DATA.dcf.sensWacc[i] === d.wacc && DATA.dcf.sensTerm[j] === d.terminal;
-        return `<div class="hm-cell ${active ? "active" : ""}" style="background:color-mix(in srgb, var(--surface-card) ${Math.round((1 - t) * 100)}%, var(--primary-default) ${Math.round(t * 100)}%)">${fmtRp(v)}</div>`;
-      }).join("")}`).join("");
+    destroyCharts();
+    heat.innerHTML = dcfHeatHTML();
   }
   $$("[data-dcf]").forEach((el) => {
     const lab = el.closest(".field")?.querySelector("strong");
@@ -1275,7 +1284,7 @@ document.addEventListener("click", (e) => {
 
 document.addEventListener("input", (e) => {
   const el = e.target;
-  if (el.matches("[data-dcf]")) { state.dcf[el.dataset.dcf] = +el.value; updateDCF(); return; }
+  if (el.matches("[data-dcf]")) { state.dcf[el.dataset.dcf] = +el.value; updateDCF(); mountCharts(); return; }
   if (el.id === "globalSearch" || el.id === "watchSearch") {
     state.query = el.value;
     const other = el.id === "globalSearch" ? $("#watchSearch") : $("#globalSearch");
@@ -1356,142 +1365,6 @@ document.addEventListener("drop", (e) => {
   if (f) processTeamFile(f);
 });
 
-/* ---------- Tooltip grafik garis (hover di chart) ---------- */
-function svgViewBoxW(svg) {
-  /* G2: lebar viewBox dibaca dari SVG, bukan hardcoded — grafik kini
-     memakai viewBox lebar (mis. multiLine 1024). */
-  const vb = svg.getAttribute && svg.getAttribute("viewBox");
-  if (vb) { const p = vb.split(/\s+/); if (p.length === 4 && +p[2]) return +p[2]; }
-  return 640;
-}
-function chartTipHide(svg) {
-  if (!svg) return;
-  const tip = svg.parentElement && svg.parentElement.querySelector(".chart-tip");
-  if (tip) tip.hidden = true;
-  const guide = svg.querySelector(".ml-guide");
-  if (guide) guide.setAttribute("visibility", "hidden");
-  svg.querySelectorAll(".ml-dot").forEach((d) => d.setAttribute("r", "3"));
-}
-document.addEventListener("mousemove", (e) => {
-  const svg = e.target.closest && e.target.closest(".ml-chart");
-  if (!svg) return;
-  const rect = svg.getBoundingClientRect();
-  const labels = JSON.parse(svg.dataset.labels);
-  const names = JSON.parse(svg.dataset.names);
-  const series = JSON.parse(svg.dataset.series);
-  const colors = JSON.parse(svg.dataset.colors);
-  const W = svgViewBoxW(svg), padL = 40, padR = 8;
-  const vx = ((e.clientX - rect.left) / rect.width) * W;
-  let i = Math.round((vx - padL) / ((W - padL - padR) / (labels.length - 1)));
-  i = Math.max(0, Math.min(labels.length - 1, i));
-  const X = padL + (i / (labels.length - 1)) * (W - padL - padR);
-  const guide = svg.querySelector(".ml-guide");
-  if (guide) { guide.setAttribute("x1", X.toFixed(1)); guide.setAttribute("x2", X.toFixed(1)); guide.setAttribute("visibility", "visible"); }
-  svg.querySelectorAll(".ml-dot").forEach((d) => d.setAttribute("r", +d.dataset.i === i ? "5.5" : "3"));
-  const tip = svg.parentElement && svg.parentElement.querySelector(".chart-tip");
-  if (tip) {
-    tip.innerHTML = `<div class="tip-title">${labels[i]} 2026</div>` + names.map((n, si) =>
-      `<div class="tip-row"><span class="tip-dot" style="background:${colors[si]}"></span>${n}<b>${series[si][i]}%</b></div>`).join("");
-    tip.hidden = false;
-    const wrap = svg.parentElement.getBoundingClientRect();
-    const left = Math.min(e.clientX - wrap.left + 14, Math.max(0, wrap.width - 190));
-    tip.style.left = left + "px";
-    tip.style.top = Math.max(4, e.clientY - wrap.top - 12) + "px";
-  }
-});
-document.addEventListener("mouseout", (e) => {
-  const svg = e.target.closest && e.target.closest(".ml-chart");
-  if (svg && !(e.relatedTarget && svg.contains(e.relatedTarget))) chartTipHide(svg);
-});
-
-/* ---------- Tooltip grafik umum (G1): area, batang, donat, skor, candle, heatmap ----------
-   Satu handler delegasi untuk semua grafik selain multiLine (yang punya
-   handler sendiri di atas). Elemen hover membawa data-tip (vBars, candle,
-   scoreMeter) atau dihitung dari data SVG/DOM (areaChart, donut, heatmap).
-   Tooltip generik ditandai data-generic agar tidak mengganggu tooltip
-   multiLine. */
-function genericTipHideAll() {
-  $$(".chart-tip[data-generic]").forEach((tip) => { tip.hidden = true; });
-  $$(".ac-guide").forEach((g) => g.setAttribute("visibility", "hidden"));
-}
-function genericTipShow(container, html, e) {
-  if (!container) return;
-  let tip = container.querySelector(".chart-tip");
-  if (!tip) {
-    /* Heatmap: wadah .heatmap dibuat ulang oleh updateDCF, jadi tip
-       dibuat saat dibutuhkan (position:absolute, di luar alur grid). */
-    tip = document.createElement("div");
-    tip.className = "chart-tip";
-    tip.setAttribute("data-generic", "");
-    container.appendChild(tip);
-  }
-  tip.innerHTML = html;
-  tip.hidden = false;
-  const rect = container.getBoundingClientRect();
-  const left = Math.min(Math.max(0, e.clientX - rect.left + 14), Math.max(0, rect.width - 200));
-  tip.style.left = left + "px";
-  tip.style.top = Math.max(4, e.clientY - rect.top - 12) + "px";
-}
-function donutTipText(seg) {
-  /* Label segmen diambil dari baris legenda di kartu yang sama (urutannya
-     sama dengan urutan segmen); fallback: nilai segmen. */
-  const card = seg.closest ? seg.closest(".card") : null;
-  const rows = card ? card.querySelectorAll(".legend-row") : [];
-  const row = rows[+seg.dataset.i];
-  if (row) {
-    const parts = [...row.childNodes].map((n) => (n.textContent || "").trim()).filter(Boolean);
-    if (parts.length) return parts.join(" ");
-  }
-  return "Segmen " + (+seg.dataset.i + 1) + ": " + seg.dataset.v;
-}
-document.addEventListener("mousemove", (e) => {
-  if (!e.target || !e.target.closest) return;
-  const hit = e.target.closest("[data-tip], .area-chart, .donut-seg, .hm-cell");
-  genericTipHideAll();
-  if (!hit) return;
-  if (hit.classList && hit.classList.contains("area-chart")) {
-    /* areaChart: titik terdekat dari posisi x (pola multiLine). */
-    const labels = JSON.parse(hit.dataset.labels);
-    const tips = JSON.parse(hit.dataset.tips);
-    const W = svgViewBoxW(hit);
-    const padL = +hit.dataset.padl || 52, padR = +hit.dataset.padr || 8;
-    const rect = hit.getBoundingClientRect();
-    const vx = ((e.clientX - rect.left) / rect.width) * W;
-    let i = Math.round((vx - padL) / ((W - padL - padR) / (labels.length - 1)));
-    i = Math.max(0, Math.min(labels.length - 1, i));
-    const X = padL + (i / (labels.length - 1)) * (W - padL - padR);
-    const guide = hit.querySelector(".ac-guide");
-    if (guide) { guide.setAttribute("x1", X.toFixed(1)); guide.setAttribute("x2", X.toFixed(1)); guide.setAttribute("visibility", "visible"); }
-    genericTipShow(hit.parentElement, `<div class="tip-title">${esc(tips[i])}</div>`, e);
-    return;
-  }
-  if (hit.classList && hit.classList.contains("donut-seg")) {
-    genericTipShow(hit.closest("svg").parentElement, `<div class="tip-title">${esc(donutTipText(hit))}</div>`, e);
-    return;
-  }
-  if (hit.classList && hit.classList.contains("hm-cell")) {
-    /* Heatmap DCF: tanpa perubahan markup — baris/kolom dibaca dari DOM. */
-    const heat = hit.closest(".heatmap");
-    const cells = [...heat.querySelectorAll(".hm-cell")];
-    const k = cells.indexOf(hit);
-    const rowH = heat.querySelectorAll(".hm-row")[Math.floor(k / 3)];
-    const colH = heat.querySelectorAll(".hm-head")[k % 3];
-    const html = `<div class="tip-title">Nilai wajar ${esc(hit.textContent.trim())}</div>` +
-      `<div class="tip-row">WACC ${esc(rowH ? rowH.textContent.trim() : "?")} &middot; Terminal ${esc(colH ? colH.textContent.trim() : "?")}</div>`;
-    genericTipShow(heat, html, e);
-    return;
-  }
-  /* data-tip: batang vBars, hit-area candle, scoreMeter. */
-  const tipTarget = hit.closest("[data-tip]");
-  if (tipTarget) {
-    const svg = tipTarget.closest("svg");
-    const container = svg && svg.parentElement ? svg.parentElement : tipTarget.closest(".chart-wrap, .donut-box, .chart-wrap-inline, .card");
-    genericTipShow(container, tipTarget.dataset.tip, e);
-  }
-});
-document.addEventListener("mouseout", (e) => {
-  if (!e.relatedTarget) genericTipHideAll();
-});
 function applyQuery(q) {
   const needle = q.trim().toLowerCase();
   $$("#view tbody tr").forEach((tr) => {
@@ -1518,6 +1391,10 @@ $("#themeToggle").addEventListener("click", () => {
   state.theme = state.theme === "dark" ? "light" : "dark";
   localStorage.setItem("aai-theme", state.theme);
   applyTheme();
+  /* Chart.js: warna chart dibaca saat mount, jadi render ulang agar
+     chart dibuat ulang mengikuti tema baru (render memanggil
+     destroyCharts + mountCharts). */
+  render();
 });
 $("#aiOpenBtn").addEventListener("click", openAI);
 $("#aiCloseBtn").addEventListener("click", closeAI);

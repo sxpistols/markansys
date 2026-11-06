@@ -1,207 +1,858 @@
-/* charts.js — Grafik SVG tanpa dependensi.
-   Semua grafik digambar sebagai SVG inline supaya mengikuti token warna
-   (CSS variables) dan bisa diekspor. */
+/* charts.js — Grafik Chart.js v4 (menggantikan SVG buatan tangan).
+   ------------------------------------------------------------------
+   KONTRAK API (dipakai app.js):
+   - Setiap fungsi mengembalikan string HTML berisi
+     `<canvas data-chart-id="c-N">` di dalam `.chart-wrap` (scoreMeter:
+     `<span class="chart-wrap-inline">`), dan mendaftarkan konfigurasinya
+     via queueChart(id, config). Warna diambil dari CSS variables SAAT
+     fungsi dipanggil (helper cssVar / themeColors) — jadi setelah ganti
+     tema, integrator WAJIB me-render ulang layar lalu memanggil
+     destroyCharts() + mountCharts().
+   - mountCharts(): instansiasi semua chart yang terdaftar DAN ada di DOM
+     saat ini. Entri antrean yang canvas-nya sudah tidak ada di DOM
+     dihapus (navigasi). Mengembalikan jumlah chart yang berhasil mount.
+   - destroyCharts(): hancurkan semua instance hidup (dipanggil sebelum
+     render ulang / sebelum mount ulang). Antrean config dipertahankan.
+   - Tooltip: NATIVE Chart.js saja, tanpa tooltip custom.
+   - Sizing: responsive, maintainAspectRatio:false; tinggi wrapper
+     mengikuti proporsi FigCraft (Histori 235px, Arus Kas/NPV/Tren 180px,
+     Candle 200px, Tim sempit 160px).
+
+   DEPENDENSI (di-vendor W1, di-load SEBELUM charts.js di index.html):
+   - Chart.js v4 UMD  -> global `Chart`
+   - chartjs-chart-financial UMD (v0.2.1): TIDAK membuat global; ia
+     me-register CandlestickController/OhlcController sendiri saat
+     di-load (jadi cukup <script src> sebelum charts.js). ensureChartPlugins()
+     hanya jaring pengaman bila build ESM/CJS dipakai.
+   - chartjs-chart-matrix UMD (v3.1.0) -> global `chartjs-chart-matrix`
+     (dipakai heatmapMatrix() via heatmapMatrixConfig()). Juga
+     me-register sendiri saat di-load.
+   Bila Chart belum ter-load saat mountCharts() dipanggil, mount dilewati
+   dengan console.warn (tidak throw).
+
+   HEATMAP: heatmapMatrix() memakai Chart.js matrix via
+   heatmapMatrixConfig() (plugin matrix ter-vendor W1, terverifikasi
+   ter-load). Sel aktif berbingkai, tooltip native.
+
+   ANGKA/DATA: file ini hanya me-render; tidak ada angka yang diubah.
+   fmtRp/fmtNum adalah global dari data.js (di-load sebelum charts.js).
+*/
 "use strict";
 
 function escAttr(s) { return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;"); }
 
-function svgEl(w, h, inner, attrs = "") {
-  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" style="aspect-ratio:${w} / ${h}"${attrs} role="img" aria-hidden="true">${inner}</svg>`;
+/* ---------- Registry antrean + instance hidup ---------- */
+let __chartSeq = 0;
+const __chartQueue = new Map(); /* id -> config Chart.js */
+const __chartLive = new Map();  /* id -> { chart, el } */
+const __registeredPlugins = new Set();
+
+function nextId() { return "c-" + (++__chartSeq); }
+
+function queueChart(id, config) { __chartQueue.set(id, config); }
+
+/* ---------- Warna dari CSS variables (tema dark/light) ---------- */
+function cssVar(name, fallback = "") {
+  try {
+    if (typeof document === "undefined" || !document.documentElement) return fallback;
+    if (typeof getComputedStyle === "undefined") return fallback;
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name);
+    return (v && v.trim()) || fallback;
+  } catch (e) { return fallback; }
 }
 
-/* Grafik area (histori portofolio / arus kas kumulatif). */
+/* "var(--chart-1)" -> nilai computed; warna lain diteruskan apa adanya. */
+function resolveColor(c, fallback) {
+  if (typeof c !== "string") return c;
+  const m = /^\s*var\(\s*(--[\w-]+)\s*(?:,\s*(.+?))?\s*\)\s*$/.exec(c);
+  if (!m) return c;
+  return cssVar(m[1], (m[2] || fallback || "").trim() || c);
+}
+
+function themeColors() {
+  return {
+    textPrimary: cssVar("--text-primary", "#0F172A"),
+    textSecondary: cssVar("--text-secondary", "#475569"),
+    textMuted: cssVar("--text-muted", "#64748B"),
+    borderDefault: cssVar("--border-default", "#E1E7F0"),
+    borderStrong: cssVar("--border-strong", "#C5CFE0"),
+    surfaceCard: cssVar("--surface-card", "#FFFFFF"),
+    surfaceRaised: cssVar("--surface-raised", "#F0F3F9"),
+    warning: cssVar("--state-warning", "#B45309"),
+    up: cssVar("--market-up", "#059669"),
+    down: cssVar("--market-down", "#DC2626"),
+    flat: cssVar("--market-flat", "#64748B"),
+    primary: cssVar("--primary-default", "#2563EB"),
+    chart1: cssVar("--chart-1", "#2563EB"),
+    chart2: cssVar("--chart-2", "#059669"),
+    chart3: cssVar("--chart-3", "#7C3AED"),
+    chart4: cssVar("--chart-4", "#D97706"),
+    chart5: cssVar("--chart-5", "#0284C7"),
+    chart6: cssVar("--chart-6", "#64748B")
+  };
+}
+
+/* ---------- Helper warna ---------- */
+function parseHex(color) {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(color || "").trim());
+  if (!m) return null;
+  let h = m[1];
+  if (h.length === 3) h = h.split("").map((ch) => ch + ch).join("");
+  const n = parseInt(h, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function hexA(color, alpha) {
+  const rgb = parseHex(color);
+  return rgb ? `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha})` : color;
+}
+
+function mixHex(a, b, t) {
+  const pa = parseHex(a), pb = parseHex(b);
+  if (!pa || !pb) return b;
+  const m = (x, y) => Math.round(x + (y - x) * t);
+  return `rgb(${m(pa[0], pb[0])},${m(pa[1], pb[1])},${m(pa[2], pb[2])})`;
+}
+
+/* ---------- Helper umum Chart.js ---------- */
+function tooltipStyle(t) {
+  return {
+    backgroundColor: t.surfaceRaised,
+    titleColor: t.textPrimary,
+    bodyColor: t.textSecondary,
+    borderColor: t.borderStrong,
+    borderWidth: 1,
+    padding: 10,
+    boxPadding: 4,
+    titleFont: { size: 12, weight: "600" },
+    bodyFont: { size: 12 }
+  };
+}
+
+const AXIS_FONT = { size: 11 };
+
+function chartWrap(id, height, extra = "") {
+  return `<div class="chart-wrap" style="position:relative;height:${height}px;${extra}"><canvas data-chart-id="${escAttr(id)}"></canvas></div>`;
+}
+
+/* Daftarkan controller plugin UMD bila global-nya tersedia DAN belum
+   terdaftar. Catatan hasil verifikasi (npm chartjs-chart-financial
+   0.2.1, chartjs-chart-matrix 3.1.0): KEDUA UMD me-register sendiri
+   saat di-load (financial: Chart.register(CandlestickController,
+   OhlcController, ...); matrix: Chart.register(MatrixController,
+   MatrixElement) + global `chartjs-chart-matrix`). UMD financial TIDAK
+   membuat global `ChartFinancial`. Fungsi ini hanya jaring pengaman
+   bila vendor memakai build ESM/CJS; getController dipakai untuk
+   memastikan tidak ada registrasi ganda. */
+function __controllerRegistered(id) {
+  try { return !!Chart.registry.getController(id); } catch (e) { return false; }
+}
+
+function ensureChartPlugins() {
+  if (typeof Chart === "undefined") return;
+  const g = typeof globalThis !== "undefined" ? globalThis : {};
+  try {
+    const fin = g.ChartFinancial || g["chartjs-chart-financial"];
+    if (fin && fin.CandlestickController && fin.CandlestickElement &&
+        !__controllerRegistered("candlestick") && !__registeredPlugins.has("candlestick")) {
+      Chart.register(fin.CandlestickController, fin.CandlestickElement);
+      __registeredPlugins.add("candlestick");
+    }
+  } catch (e) { /* plugin finansial opsional di sini; mount akan gagal jelas */ }
+  try {
+    const mat = g.ChartMatrix || g["chartjs-chart-matrix"];
+    if (mat && mat.MatrixController && mat.MatrixElement &&
+        !__controllerRegistered("matrix") && !__registeredPlugins.has("matrix")) {
+      Chart.register(mat.MatrixController, mat.MatrixElement);
+      __registeredPlugins.add("matrix");
+    }
+  } catch (e) { /* matrix hanya dipakai heatmapMatrixConfig() */ }
+}
+
+/* Instansiasi semua chart yang terdaftar DAN ada di DOM saat ini. */
+function mountCharts() {
+  if (typeof document === "undefined") return 0;
+  if (typeof Chart === "undefined") {
+    if (typeof console !== "undefined") console.warn("[charts] Chart.js belum ter-load; mountCharts dilewati.");
+    return 0;
+  }
+  ensureChartPlugins();
+  const t = themeColors();
+  try {
+    Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+    Chart.defaults.color = t.textMuted;
+    Chart.defaults.borderColor = t.borderDefault;
+  } catch (e) { /* abaikan */ }
+  let mounted = 0;
+  for (const [id, config] of Array.from(__chartQueue.entries())) {
+    const canvas = document.querySelector(`canvas[data-chart-id="${id}"]`);
+    const live = __chartLive.get(id);
+    if (!canvas) {
+      if (live) { try { live.chart.destroy(); } catch (e) { /* abaikan */ } __chartLive.delete(id); }
+      __chartQueue.delete(id);
+      continue;
+    }
+    if (live && live.el === canvas) continue; /* sudah ter-mount */
+    if (live) { try { live.chart.destroy(); } catch (e) { /* abaikan */ } __chartLive.delete(id); }
+    /* Canvas yang chart-nya gagal di tengah konstruksi (mis. plugin
+       crash) tetap terdaftar di Chart.js — hancurkan dulu supaya
+       `new Chart` tidak melempar "Canvas is already in use". */
+    try {
+      const stale = Chart.getChart(canvas);
+      if (stale) stale.destroy();
+    } catch (e) { /* abaikan */ }
+    try {
+      const chart = new Chart(canvas, config);
+      __chartLive.set(id, { chart, el: canvas });
+      mounted++;
+    } catch (e) {
+      if (typeof console !== "undefined") console.error("[charts] gagal mount", id, e);
+    }
+  }
+  return mounted;
+}
+
+/* Hancurkan semua instance hidup. Dipanggil integrator sebelum render
+   ulang layar (render() mengganti #view.innerHTML). Antrean config
+   dipertahankan supaya mountCharts() bisa dipakai lagi setelah render. */
+function destroyCharts() {
+  for (const { chart } of __chartLive.values()) {
+    try { chart.destroy(); } catch (e) { /* abaikan */ }
+  }
+  __chartLive.clear();
+}
+
+/* ---------- Grafik area (histori portofolio / arus kas kumulatif) ---------- */
+/* Tinggi mengikuti normalisasi lama: Histori 235px, Arus Kas ("cum") 180px. */
 function areaChart({ w = 1024, h = 180, values, labels, ymin, ymax, color = "var(--chart-1)", formatY = (v) => v, id = "g" }) {
-  /* G2: viewBox dinormalisasi di dalam fungsi (bukan di pemanggil) agar
-     tinggi render mendekati FigCraft: Histori ~3,3:1 (plot FigCraft
-     632×~195), Arus Kas kumulatif ~5,7:1 (plot FigCraft ~1012×~170). */
-  if (id === "cum") { w = 1024; h = 180; } else { w = 768; h = 235; }
-  const padL = 52, padB = 22, padT = 8, padR = 8;
+  const t = themeColors();
+  const col = resolveColor(color, t.chart1);
+  const height = id === "cum" ? 180 : 235;
+  const cid = nextId();
   const lo = ymin !== undefined ? ymin : Math.min(...values) * 0.98;
   const hi = ymax !== undefined ? ymax : Math.max(...values) * 1.02;
-  const X = (i) => padL + (i / (values.length - 1)) * (w - padL - padR);
-  const Y = (v) => padT + (1 - (v - lo) / (hi - lo)) * (h - padB - padT);
-  const pts = values.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ");
-  const area = `${padL},${Y(lo)} ` + pts + ` ${X(values.length - 1).toFixed(1)},${Y(lo)}`;
-  let grid = "";
-  const ticks = 4;
-  for (let t = 0; t <= ticks; t++) {
-    const v = lo + ((hi - lo) * t) / ticks;
-    const y = Y(v);
-    grid += `<line x1="${padL}" y1="${y}" x2="${w - padR}" y2="${y}" stroke="var(--border-default)" stroke-width="1"/>` +
-      `<text x="${padL - 6}" y="${y + 4}" text-anchor="end" class="axis-label">${formatY(v)}</text>`;
+  const labs = labels && labels.length ? labels.slice() : values.map((_, i) => String(i + 1));
+  const config = {
+    type: "line",
+    data: {
+      labels: labs,
+      datasets: [{
+        data: values.slice(),
+        borderColor: col,
+        backgroundColor: (ctx) => {
+          const { chart } = ctx;
+          const { ctx: c, chartArea } = chart;
+          if (!chartArea) return hexA(col, 0.28);
+          const g = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+          g.addColorStop(0, hexA(col, 0.28));
+          g.addColorStop(1, hexA(col, 0.02));
+          return g;
+        },
+        fill: true,
+        tension: 0,
+        borderWidth: 2,
+        pointRadius: (ctx) => (ctx.dataIndex === values.length - 1 ? 4 : 0),
+        pointHoverRadius: 4,
+        pointBackgroundColor: col,
+        pointBorderColor: col
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          ...tooltipStyle(t),
+          callbacks: {
+            title: (items) => items[0].label,
+            label: (ctx) => `${ctx.label}: ${formatY(ctx.parsed.y)}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          border: { display: false },
+          ticks: { color: t.textMuted, font: AXIS_FONT, maxTicksLimit: 6, maxRotation: 0 }
+        },
+        y: {
+          min: lo, max: hi,
+          grid: { color: t.borderDefault },
+          border: { display: false },
+          ticks: { color: t.textMuted, font: AXIS_FONT, maxTicksLimit: 5, callback: (v) => formatY(v) }
+        }
+      }
+    }
+  };
+  queueChart(cid, config);
+  return chartWrap(cid, height);
+}
+
+/* ---------- Donat ---------- */
+/* center (opsional): {title, sub} atau array baris teks (string atau
+   {text, bold}). Bila diisi, teks tengah digambar plugin inline — call
+   site bisa memindahkan overlay HTML .donut-center ke param ini. */
+function normalizeCenter(center) {
+  if (!center) return [];
+  if (Array.isArray(center)) {
+    return center.map((ln, i) => (typeof ln === "string" ? { text: ln, bold: i === 0 } : ln))
+      .filter((ln) => ln && ln.text !== undefined && ln.text !== null && ln.text !== "");
   }
-  let xlabels = "";
-  labels.forEach((lb, i) => {
-    if (i % Math.ceil(labels.length / 6) === 0)
-      xlabels += `<text x="${X(i)}" y="${h - 4}" text-anchor="middle" class="axis-label">${lb}</text>`;
-  });
-  /* G1: tooltip hover (pola multiLine): data-tips berisi teks per titik,
-     garis panduan .ac-guide digerakkan handler di app.js. */
-  const tips = values.map((v, i) => `${labels[i]}: ${formatY(v)}`);
-  const dataAttrs = ` class="area-chart" data-labels="${escAttr(JSON.stringify(labels))}" data-tips="${escAttr(JSON.stringify(tips))}" data-padl="${padL}" data-padr="${padR}"`;
-  return svgEl(w, h,
-    `<defs><linearGradient id="ag${id}" x1="0" y1="0" x2="0" y2="1">` +
-    `<stop offset="0" stop-color="${color}" stop-opacity="0.28"/>` +
-    `<stop offset="1" stop-color="${color}" stop-opacity="0.02"/></linearGradient></defs>` +
-    grid +
-    `<line class="ac-guide" x1="${X(0).toFixed(1)}" y1="${padT}" x2="${X(0).toFixed(1)}" y2="${h - padB}" stroke="var(--border-strong)" stroke-width="1" stroke-dasharray="3 3" visibility="hidden"/>` +
-    `<polygon points="${area}" fill="url(#ag${id})"/>` +
-    `<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` +
-    `<circle cx="${X(values.length - 1)}" cy="${Y(values[values.length - 1])}" r="4" fill="${color}"/>` +
-    xlabels, dataAttrs) + `<div class="chart-tip" data-generic hidden></div>`;
+  if (typeof center === "object") {
+    return [{ text: center.title, bold: true }, { text: center.sub }]
+      .filter((ln) => ln.text !== undefined && ln.text !== null && ln.text !== "");
+  }
+  if (typeof center === "string") return [{ text: center, bold: true }];
+  return [];
 }
 
-/* Donat — memakai stroke-dasharray pada lingkaran (stabil di semua browser). */
-function donut({ size = 180, thick = 26, segments }) {
-  const r = (size - thick) / 2, c = 2 * Math.PI * r, cx = size / 2;
-  const total = segments.reduce((a, s) => a + s.value, 0);
-  let off = 0, circles = "";
-  segments.forEach((s, i) => {
-    const len = (s.value / total) * c;
-    /* G1: segmen bisa di-hover; handler di app.js membaca legenda kartu
-       untuk label, data-v dipakai sebagai fallback. */
-    circles += `<circle class="donut-seg" data-i="${i}" data-v="${s.value}" cx="${cx}" cy="${cx}" r="${r}" fill="none" stroke="${s.color}" stroke-width="${thick}" ` +
-      `stroke-dasharray="${len.toFixed(1)} ${(c - len).toFixed(1)}" stroke-dashoffset="${(-off).toFixed(1)}" transform="rotate(-90 ${cx} ${cx})"/>`;
-    off += len;
-  });
-  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-hidden="true">${circles}</svg>` +
-    `<div class="chart-tip" data-generic hidden></div>`;
+function donut({ size = 180, thick = 26, segments, center }) {
+  const t = themeColors();
+  const total = segments.reduce((a, s) => a + s.value, 0) || 1;
+  const cid = nextId();
+  const lines = normalizeCenter(center);
+  const centerPlugin = lines.length ? {
+    id: "donutCenter",
+    afterDraw(chart) {
+      const meta = chart.getDatasetMeta(0);
+      const arc = meta.data[0];
+      if (!arc) return;
+      const { ctx } = chart;
+      const heights = lines.map((ln) => (ln.bold ? 26 : 18));
+      const totalH = heights.reduce((a, b) => a + b, 0);
+      let y = arc.y - totalH / 2;
+      ctx.save();
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      lines.forEach((ln, i) => {
+        ctx.font = ln.bold
+          ? "700 20px Inter, system-ui, sans-serif"
+          : "400 12px Inter, system-ui, sans-serif";
+        ctx.fillStyle = ln.bold ? t.textPrimary : t.textMuted;
+        ctx.fillText(String(ln.text), arc.x, y + heights[i] / 2);
+        y += heights[i];
+      });
+      ctx.restore();
+    }
+  } : null;
+  const config = {
+    type: "doughnut",
+    data: {
+      labels: segments.map((s, i) => s.label || `Segmen ${i + 1}`),
+      datasets: [{
+        data: segments.map((s) => s.value),
+        backgroundColor: segments.map((s) => resolveColor(s.color, t.chart1)),
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      cutout: `${Math.round((1 - (2 * thick) / size) * 100)}%`,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          ...tooltipStyle(t),
+          callbacks: {
+            label: (ctx) => {
+              const v = ctx.parsed;
+              const pct = Math.round((v / total) * 100);
+              return ` ${ctx.label}: ${v} (${pct}%)`;
+            }
+          }
+        }
+      }
+    },
+    plugins: centerPlugin ? [centerPlugin] : []
+  };
+  queueChart(cid, config);
+  return chartWrap(cid, size, `width:${size}px;`);
 }
 
-/* Batang vertikal (NPV per skema, capaian tim). target: garis target opsional (mis. Rp 600 jt). */
+/* ---------- Batang vertikal (NPV per skema, capaian tim) ---------- */
+/* Label nilai di atas tiap batang digambar plugin inline dengan halo
+   (stroke warna kartu) supaya tetap terbaca bila garis target melewatinya
+   — kasus label "Rp 552 jt" yang dulu tertabrak garis target. Garis
+   target putus-putus + label digambar plugin inline yang sama (tanpa
+   dependensi annotation). Bila target > nilai maks, skala-Y diperluas
+   supaya garis tetap terlihat (dulu target > maks tidak digambar). */
 function vBars({ w = 1024, h = 180, values, labels, colors, formatV = (v) => v, baselineZero = true, target, targetLabel }) {
-  /* G2: viewBox dinormalisasi di dalam fungsi. Kartu lebar (NPV Layar 6)
-     jadi 1024×180 (~5,7:1, plot FigCraft ~1012×~170); kartu sempit
-     (Capaian Tim, w<=500) dipertahankan lebarnya dengan tinggi 160
-     (plot FigCraft ~392×~150). */
-  if (w >= 500) { w = 1024; h = 180; } else { h = 160; }
-  const padB = 24, padT = 28, padL = 8, padR = 8;
-  const max = Math.max(...values, 0), min = baselineZero ? 0 : Math.min(...values, 0);
-  const Y = (v) => padT + (1 - (v - min) / (max - min || 1)) * (h - padB - padT);
-  const n = values.length, slot = (w - padL - padR) / n, bw = Math.min(24, slot * 0.5);
-  let out = `<line x1="${padL}" y1="${Y(0)}" x2="${w - padR}" y2="${Y(0)}" stroke="var(--border-strong)" stroke-width="1"/>`;
-  if (target !== undefined && target <= max) {
-    const yt = Y(target);
-    out += `<line x1="${padL}" y1="${yt.toFixed(1)}" x2="${w - padR}" y2="${yt.toFixed(1)}" stroke="var(--state-warning)" stroke-width="1.5" stroke-dasharray="5 4"/>` +
-      `<text x="${w - padR}" y="${Math.max(12, yt - 6).toFixed(1)}" text-anchor="end" class="axis-label" fill="var(--state-warning)">${targetLabel || ("Target " + formatV(target))}</text>`;
-  }
-  values.forEach((v, i) => {
-    const x = padL + slot * i + (slot - bw) / 2;
-    const col = colors ? colors[i] : "var(--chart-1)";
-    /* G1: tooltip hover — data-tip dibaca handler umum di app.js. */
-    const tip = `<div class="tip-title">${escAttr(labels[i])}</div><div class="tip-row">${escAttr(formatV(v))}</div>`;
-    out += `<rect class="vb-bar" data-tip="${escAttr(tip)}" x="${x.toFixed(1)}" y="${Y(Math.max(v, 0)).toFixed(1)}" width="${bw}" height="${Math.abs(Y(v) - Y(0)).toFixed(1)}" rx="4" fill="${col}"/>` +
-      `<text x="${(x + bw / 2).toFixed(1)}" y="${(Y(Math.max(v, 0)) - 8).toFixed(1)}" text-anchor="middle" class="axis-label" fill="var(--text-primary)" style="paint-order:stroke;stroke:var(--surface-card);stroke-width:4px;stroke-linejoin:round">${formatV(v)}</text>` +
-      `<text x="${(x + bw / 2).toFixed(1)}" y="${h - 6}" text-anchor="middle" class="axis-label">${labels[i]}</text>`;
-  });
-  return svgEl(w, h, out) + `<div class="chart-tip" data-generic hidden></div>`;
+  const t = themeColors();
+  const height = w >= 500 ? 180 : 160;
+  const cid = nextId();
+  const maxV = Math.max(...values, 0, target !== undefined ? target : -Infinity);
+  const minV = baselineZero ? 0 : Math.min(...values, 0);
+  const barColors = values.map((_, i) => resolveColor(colors ? colors[i] : "var(--chart-1)", t.chart1));
+  const valuePlugin = {
+    id: "vBarValues",
+    afterDatasetsDraw(chart) {
+      const { ctx, chartArea } = chart;
+      const meta = chart.getDatasetMeta(0);
+      ctx.save();
+      ctx.font = "11px Inter, system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.strokeStyle = t.surfaceCard;
+      ctx.lineWidth = 4;
+      ctx.lineJoin = "round";
+      meta.data.forEach((bar, i) => {
+        const v = values[i];
+        const text = formatV(v);
+        const x = bar.x;
+        if (v >= 0) {
+          ctx.textBaseline = "bottom";
+          const y = bar.y - 6;
+          ctx.strokeText(text, x, y);
+          ctx.fillStyle = t.textPrimary;
+          ctx.fillText(text, x, y);
+        } else {
+          ctx.textBaseline = "top";
+          const y = bar.base + 6;
+          ctx.strokeText(text, x, y);
+          ctx.fillStyle = t.textPrimary;
+          ctx.fillText(text, x, y);
+        }
+      });
+      /* Garis target putus-putus + label (halo yang sama). */
+      if (target !== undefined) {
+        const yScale = chart.scales.y;
+        const y = yScale.getPixelForValue(target);
+        if (y >= chartArea.top && y <= chartArea.bottom) {
+          ctx.strokeStyle = t.warning;
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([5, 4]);
+          ctx.beginPath();
+          ctx.moveTo(chartArea.left, y);
+          ctx.lineTo(chartArea.right, y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          const label = targetLabel || ("Target " + formatV(target));
+          ctx.textAlign = "right";
+          ctx.textBaseline = "bottom";
+          const ly = Math.max(chartArea.top + 12, y - 6);
+          ctx.strokeStyle = t.surfaceCard;
+          ctx.lineWidth = 4;
+          ctx.lineJoin = "round";
+          ctx.strokeText(label, chartArea.right - 2, ly);
+          ctx.fillStyle = t.warning;
+          ctx.fillText(label, chartArea.right - 2, ly);
+        }
+      }
+      ctx.restore();
+    }
+  };
+  const config = {
+    type: "bar",
+    data: {
+      labels: labels.slice(),
+      datasets: [{
+        data: values.slice(),
+        backgroundColor: barColors,
+        borderRadius: 4,
+        maxBarThickness: 24,
+        categoryPercentage: 0.6,
+        barPercentage: 0.9
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: "index", intersect: false },
+      layout: { padding: { top: 8 } },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          ...tooltipStyle(t),
+          callbacks: { label: (ctx) => `${ctx.label}: ${formatV(ctx.parsed.y)}` }
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          border: { display: false },
+          ticks: { color: t.textMuted, font: AXIS_FONT, maxRotation: 0 }
+        },
+        y: {
+          min: minV,
+          max: maxV === minV ? minV + 1 : maxV,
+          grid: { color: t.borderDefault },
+          border: { display: false },
+          ticks: { color: t.textMuted, font: AXIS_FONT, maxTicksLimit: 5, callback: (v) => formatV(v) }
+        }
+      }
+    },
+    plugins: [valuePlugin]
+  };
+  queueChart(cid, config);
+  return chartWrap(cid, height);
 }
 
-/* Batang horizontal (skor sentimen -1 sampai +1 dengan garis tengah). */
+/* ---------- Gauge skor sentimen (-1 s.d. +1) ---------- */
+/* Setengah lingkaran atas: doughnut circumference 180, rotation 270
+   (0 derajat = atas, searah jarum jam). Nilai + label digambar plugin
+   inline di dalam busur. */
 function scoreMeter({ w = 320, value }) {
-  const mid = w / 2, x = mid + (value / 1) * (w / 2 - 8);
-  const col = value >= 0.15 ? "var(--market-up)" : value <= -0.15 ? "var(--market-down)" : "var(--market-flat)";
-  /* G1: tooltip hover — dibungkus span berposisi relatif agar .chart-tip
-     punya acuan posisi (dipakai di kartu Layar 4 dan baris Layar 8). */
+  const t = themeColors();
+  const frac = Math.max(0, Math.min(1, (value + 1) / 2));
+  const col = value >= 0.15 ? t.up : value <= -0.15 ? t.down : t.flat;
   const label = value >= 0.15 ? "Cenderung positif" : value <= -0.15 ? "Cenderung negatif" : "Netral";
   const signed = (value >= 0 ? "+" : "") + value.toFixed(2);
-  const tip = `<div class="tip-title">Skor sentimen</div><div class="tip-row">${signed} &middot; ${label}</div>`;
-  return `<span class="chart-wrap-inline">` + svgEl(w, 24,
-    `<line x1="0" y1="12" x2="${w}" y2="12" stroke="var(--border-default)" stroke-width="4" stroke-linecap="round"/>` +
-    `<line x1="${mid}" y1="4" x2="${mid}" y2="20" stroke="var(--border-strong)" stroke-width="1"/>` +
-    `<circle cx="${x.toFixed(1)}" cy="12" r="7" fill="${col}"/>`, ` data-tip="${escAttr(tip)}"`) +
-    `<div class="chart-tip" data-generic hidden></div></span>`;
+  const cid = nextId();
+  const height = Math.round(w / 2);
+  const centerPlugin = {
+    id: "gaugeCenter",
+    afterDraw(chart) {
+      const meta = chart.getDatasetMeta(0);
+      const arc = meta.data[0];
+      if (!arc) return;
+      const { ctx } = chart;
+      ctx.save();
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "700 20px Inter, system-ui, sans-serif";
+      ctx.fillStyle = t.textPrimary;
+      ctx.fillText(signed, arc.x, arc.y - 14);
+      ctx.font = "400 12px Inter, system-ui, sans-serif";
+      ctx.fillStyle = t.textMuted;
+      ctx.fillText(label, arc.x, arc.y + 8);
+      ctx.restore();
+    }
+  };
+  const config = {
+    type: "doughnut",
+    data: {
+      datasets: [{
+        data: [frac, 1 - frac],
+        backgroundColor: [col, t.borderDefault],
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      rotation: 270,
+      circumference: 180,
+      cutout: "70%",
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          ...tooltipStyle(t),
+          callbacks: {
+            title: () => "Skor sentimen",
+            label: () => ` ${signed} · ${label}`
+          }
+        }
+      }
+    },
+    plugins: [centerPlugin]
+  };
+  queueChart(cid, config);
+  return `<span class="chart-wrap-inline" style="position:relative;display:inline-block;width:${w}px;height:${height}px"><canvas data-chart-id="${escAttr(cid)}"></canvas></span>`;
 }
 
-/* Candlestick + garis MA dan support/resistance. */
+/* ---------- Candlestick + MA 50/200 + support/resistance ---------- */
+/* Sumbu-x: category scale dengan label "1".."N" (data ohlc tidak punya
+   tanggal; TIDAK butuh date adapter). MA 50/200 sebagai dataset garis di
+   chart yang sama; support/resistance sebagai dataset garis putus-putus
+   (tanpa dependensi annotation) + label teks via plugin inline. ohlc
+   berbentuk array {o,h,l,c} (array [o,h,l,c] lama tetap didukung). */
 function candleChart({ w = 1024, h = 200, ohlc, maFast = [], maSlow = [], ma50 = [], ma200 = [], support, resistance, lo, hi }) {
-  /* Kontrak data (klarifikasi koordinator): ohlc berisi OBJEK {o,h,l,c}
-     (200 candle deterministik dari Worker A); array [o,h,l,c] lama tetap
-     didukung sebagai fallback. MA diterima sebagai ma50/ma200 terpisah,
-     dengan maFast/maSlow sebagai fallback kompatibilitas. */
-  /* G2: viewBox dinormalisasi di dalam fungsi (pemanggil di sDetail tidak
-     diubah): 1024×200 (~5,1:1, plot FigCraft ~1012×~200). */
-  w = 1024; h = 200;
-  const padL = 56, padB = 22, padT = 10, padR = 12;
-  const X = (i) => padL + (i + 0.5) * ((w - padL - padR) / ohlc.length);
-  const Y = (v) => padT + (1 - (v - lo) / (hi - lo)) * (h - padB - padT);
-  const bw = Math.max(4, ((w - padL - padR) / ohlc.length) * 0.55);
-  let out = "";
-  [9400, 9600, 9800, 10000].forEach((gv) => {
-    out += `<line x1="${padL}" y1="${Y(gv)}" x2="${w - padR}" y2="${Y(gv)}" stroke="var(--border-default)" stroke-width="1"/>` +
-      `<text x="${padL - 6}" y="${Y(gv) + 4}" text-anchor="end" class="axis-label">Rp ${fmtNum(gv)}</text>`;
-  });
-  // Support / resistance
-  out += `<line x1="${padL}" y1="${Y(support)}" x2="${w - padR}" y2="${Y(support)}" stroke="var(--market-down)" stroke-width="1" stroke-dasharray="4 4"/>` +
-    `<text x="${w - padR}" y="${Y(support) - 5}" text-anchor="end" class="axis-label" fill="var(--market-down)">Support ${fmtRp(support)}</text>` +
-    `<line x1="${padL}" y1="${Y(resistance)}" x2="${w - padR}" y2="${Y(resistance)}" stroke="var(--market-up)" stroke-width="1" stroke-dasharray="4 4"/>` +
-    `<text x="${w - padR}" y="${Y(resistance) - 5}" text-anchor="end" class="axis-label" fill="var(--market-up)">Resistance ${fmtRp(resistance)}</text>`;
-  // Candles — data bisa berbentuk array [o,h,l,c] (lama) atau objek
-  // {o,h,l,c} (format baru dari worker lain). Field yang tidak ada
-  // dilewati: candle tetap dapat di-hover dengan nilai yang tersedia,
-  // dan fungsi tidak pernah crash karena format data.
-  const slot = (w - padL - padR) / ohlc.length;
-  ohlc.forEach((c, i) => {
+  const t = themeColors();
+  const cid = nextId();
+  const norm = ohlc.map((c, i) => {
     const o = c.o !== undefined ? c.o : c[0];
     const hh = c.h !== undefined ? c.h : c[1];
     const l = c.l !== undefined ? c.l : c[2];
     const cl = c.c !== undefined ? c.c : c[3];
-    const x = X(i);
-    if ([o, hh, l, cl].every((v) => Number.isFinite(v))) {
-      const up = cl >= o, col = up ? "var(--market-up)" : "var(--market-down)";
-      out += `<line x1="${x}" y1="${Y(hh)}" x2="${x}" y2="${Y(l)}" stroke="${col}" stroke-width="1.5"/>` +
-        `<rect x="${(x - bw / 2).toFixed(1)}" y="${Y(Math.max(o, cl)).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1, Math.abs(Y(o) - Y(cl))).toFixed(1)}" fill="${col}"/>`;
-    }
-    /* G1: area hover transparan per candle + tooltip OHLC. */
-    const tipRows = [["Buka", o], ["Tertinggi", hh], ["Terendah", l], ["Tutup", cl]]
-      .filter(([, v]) => Number.isFinite(v))
-      .map(([k, v]) => `<div class="tip-row">${k} <b>${fmtRp(v)}</b></div>`).join("");
-    out += `<rect class="cd-hit" data-tip="${escAttr(`<div class="tip-title">Candle ${i + 1}</div>${tipRows}`)}" x="${(x - slot / 2).toFixed(1)}" y="${padT}" width="${slot.toFixed(1)}" height="${(h - padB - padT).toFixed(1)}" fill="transparent"/>`;
+    return { x: i, o, h: hh, l, c: cl };
   });
-  const line = (arr, col) => {
-    let out = "", seg = [];
-    const flush = () => {
-      if (seg.length > 1) out += `<polyline points="${seg.join(" ")}" fill="none" stroke="${col}" stroke-width="1.5"/>`;
-      seg = [];
-    };
-    arr.forEach((v, i) => {
-      if (v === null || v === undefined) { flush(); return; }
-      seg.push(`${X(i).toFixed(1)},${Y(v).toFixed(1)}`);
-    });
-    flush();
-    return out;
-  };
   const maF = ma50.length ? ma50 : maFast;
   const maS = ma200.length ? ma200 : maSlow;
-  out += line(maF, "var(--chart-5)") + line(maS, "var(--chart-4)");
-  return svgEl(w, h, out) + `<div class="chart-tip" data-generic hidden></div>`;
+  const labels = norm.map((_, i) => String(i + 1));
+  const fmt = (v) => (typeof fmtRp === "function" ? fmtRp(v) : String(v));
+  const srLabelPlugin = {
+    id: "srLabels",
+    afterDatasetsDraw(chart) {
+      const { ctx, chartArea } = chart;
+      const yScale = chart.scales.y;
+      ctx.save();
+      ctx.font = "11px Inter, system-ui, sans-serif";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "bottom";
+      ctx.lineJoin = "round";
+      const draw = (val, text, color) => {
+        if (val === undefined || !Number.isFinite(val)) return;
+        const y = yScale.getPixelForValue(val);
+        if (y < chartArea.top + 10 || y > chartArea.bottom) return;
+        ctx.strokeStyle = t.surfaceCard;
+        ctx.lineWidth = 4;
+        ctx.strokeText(text, chartArea.right - 2, y - 4);
+        ctx.fillStyle = color;
+        ctx.fillText(text, chartArea.right - 2, y - 4);
+      };
+      draw(support, "Support " + fmt(support), t.down);
+      draw(resistance, "Resistance " + fmt(resistance), t.up);
+      ctx.restore();
+    }
+  };
+  const config = {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        {
+          type: "candlestick",
+          label: "Harga",
+          data: norm,
+          color: { up: t.up, down: t.down, unchanged: t.flat },
+          borderColor: { up: t.up, down: t.down, unchanged: t.flat }
+        },
+        {
+          type: "line",
+          label: "MA 50",
+          data: maF.slice(),
+          borderColor: resolveColor("var(--chart-5)", t.chart5),
+          backgroundColor: resolveColor("var(--chart-5)", t.chart5),
+          borderWidth: 1.5,
+          pointRadius: 0,
+          spanGaps: false
+        },
+        {
+          type: "line",
+          label: "MA 200",
+          data: maS.slice(),
+          borderColor: resolveColor("var(--chart-4)", t.chart4),
+          backgroundColor: resolveColor("var(--chart-4)", t.chart4),
+          borderWidth: 1.5,
+          pointRadius: 0,
+          spanGaps: false
+        },
+        {
+          type: "line",
+          label: "Support",
+          data: support !== undefined ? norm.map(() => support) : [],
+          borderColor: t.down,
+          backgroundColor: t.down,
+          borderWidth: 1,
+          borderDash: [4, 4],
+          pointRadius: 0
+        },
+        {
+          type: "line",
+          label: "Resistance",
+          data: resistance !== undefined ? norm.map(() => resistance) : [],
+          borderColor: t.up,
+          backgroundColor: t.up,
+          borderWidth: 1,
+          borderDash: [4, 4],
+          pointRadius: 0
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        /* Legenda MA 50/MA 200 sudah ada sebagai HTML di app.js (di bawah
+           grafik); legenda Chart.js dimatikan supaya tidak dobel. */
+        legend: { display: false },
+        tooltip: {
+          ...tooltipStyle(t),
+          filter: (item) => item.datasetIndex === 0 ||
+            (item.parsed && item.parsed.y !== null && item.parsed.y !== undefined),
+          callbacks: {
+            title: (items) => `Candle ${items[0].label}`,
+            label: (ctx) => {
+              if (ctx.datasetIndex === 0) {
+                const d = ctx.raw;
+                return [
+                  `Buka ${fmt(d.o)}`,
+                  `Tertinggi ${fmt(d.h)}`,
+                  `Terendah ${fmt(d.l)}`,
+                  `Tutup ${fmt(d.c)}`
+                ];
+              }
+              return ` ${ctx.dataset.label} ${fmt(ctx.parsed.y)}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: "category",
+          grid: { display: false },
+          border: { display: false },
+          ticks: { color: t.textMuted, font: AXIS_FONT, maxTicksLimit: 8, maxRotation: 0, autoSkip: true }
+        },
+        y: {
+          min: lo, max: hi,
+          grid: { color: t.borderDefault },
+          border: { display: false },
+          ticks: {
+            color: t.textMuted, font: AXIS_FONT, maxTicksLimit: 5,
+            callback: (v) => "Rp " + (typeof fmtNum === "function" ? fmtNum(v) : v)
+          }
+        }
+      }
+    },
+    plugins: [srLabelPlugin]
+  };
+  queueChart(cid, config);
+  return chartWrap(cid, 200);
 }
 
-/* Grafik garis multi-seri (tren tim). Titik di tiap bulan + data untuk tooltip hover. */
+/* ---------- Grafik garis multi-seri (tren tim) ---------- */
+/* Titik di tiap bulan + legenda nama series: legenda HTML sudah ada di
+   app.js di bawah grafik (jadi legend Chart.js display:false); nama
+   series tampil di tooltip native. */
 function multiLine({ w = 1024, h = 180, series, labels, names = [], ymin = 60, ymax = 115 }) {
-  /* G2: viewBox dinormalisasi di dalam fungsi (pemanggil di sTim tidak
-     diubah): 1024×180 (~5,7:1, plot FigCraft 1024×~170). Handler tooltip
-     di app.js membaca lebar dari viewBox, bukan hardcoded 640. */
-  w = 1024; h = 180;
-  const padL = 40, padB = 22, padT = 10, padR = 8;
-  const X = (i) => padL + (i / (labels.length - 1)) * (w - padL - padR);
-  const Y = (v) => padT + (1 - (v - ymin) / (ymax - ymin)) * (h - padB - padT);
-  let out = "";
-  [60, 80, 100, 115].forEach((gv) => {
-    out += `<line x1="${padL}" y1="${Y(gv)}" x2="${w - padR}" y2="${Y(gv)}" stroke="var(--border-default)" stroke-width="1"/>` +
-      `<text x="${padL - 6}" y="${Y(gv) + 4}" text-anchor="end" class="axis-label">${gv}%</text>`;
-  });
-  out += `<line class="ml-guide" x1="${X(0)}" y1="${padT}" x2="${X(0)}" y2="${h - padB}" stroke="var(--border-strong)" stroke-width="1" stroke-dasharray="3 3" visibility="hidden"/>`;
-  series.forEach((s, si) => {
-    const pts = s.values.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ");
-    out += `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round"/>`;
-    s.values.forEach((v, i) => {
-      out += `<circle class="ml-dot" data-i="${i}" data-s="${si}" cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="3" fill="${s.color}" stroke="var(--surface-card)" stroke-width="1.5"/>`;
-    });
-  });
-  labels.forEach((lb, i) => {
-    out += `<text x="${X(i)}" y="${h - 4}" text-anchor="middle" class="axis-label">${lb}</text>`;
-  });
-  const dataAttrs = ` class="ml-chart" data-labels="${escAttr(JSON.stringify(labels))}" data-names="${escAttr(JSON.stringify(names))}" data-series="${escAttr(JSON.stringify(series.map((s) => s.values)))}" data-colors="${escAttr(JSON.stringify(series.map((s) => s.color)))}"`;
-  return svgEl(w, h, out, dataAttrs) + `<div class="chart-tip" hidden></div>`;
+  const t = themeColors();
+  const cid = nextId();
+  const config = {
+    type: "line",
+    data: {
+      labels: labels.slice(),
+      datasets: series.map((s, i) => {
+        const col = resolveColor(s.color, t.chart1);
+        return {
+          label: names[i] || `Seri ${i + 1}`,
+          data: s.values.slice(),
+          borderColor: col,
+          backgroundColor: col,
+          fill: false,
+          tension: 0,
+          borderWidth: 2,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          pointBackgroundColor: col,
+          pointBorderColor: t.surfaceCard,
+          pointBorderWidth: 1.5
+        };
+      })
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          ...tooltipStyle(t),
+          callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${ctx.parsed.y}%` }
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          border: { display: false },
+          ticks: { color: t.textMuted, font: AXIS_FONT, maxRotation: 0 }
+        },
+        y: {
+          min: ymin, max: ymax,
+          grid: { color: t.borderDefault },
+          border: { display: false },
+          ticks: { color: t.textMuted, font: AXIS_FONT, maxTicksLimit: 5, callback: (v) => v + "%" }
+        }
+      }
+    }
+  };
+  queueChart(cid, config);
+  return chartWrap(cid, 180);
+}
+
+/* ---------- Heatmap DCF (Chart.js matrix) ---------- */
+/* Mengembalikan canvas matrix via heatmapMatrixConfig() + queueChart.
+   Bentuk config:
+     heatmapMatrix({ rows, cols, values, active, formatV })
+     - rows: [label baris, ...]   (mis. ["9,5%", "10,5%", "11,5%"] — WACC)
+     - cols: [label kolom, ...]   (mis. ["2,5%", "3,5%", "4,5%"] — terminal)
+     - values: [[angka, ...], ...] (3x3, baris = rows, kolom = cols)
+     - active: { r, c }           (sel asumsi saat ini; opsional)
+     - formatV: (v) => string     (default fmtRp)
+   Label rows/cols sudah diformat pemanggil (string). */
+function heatmapMatrix({ rows, cols, values, active, formatV }) {
+  const id = nextId();
+  queueChart(id, heatmapMatrixConfig({ rows, cols, values, active, formatV }));
+  return chartWrap(id, 180);
+}
+
+/* Bentuk config Chart.js matrix (dipakai heatmapMatrix() di atas).
+   updateDCF() di app.js membangun ulang innerHTML #dcfHeat via
+   dcfHeatHTML() tiap slider berubah, lalu mountCharts() dipanggil —
+   jadi canvas heatmap ter-mount ulang dengan config baru. */
+function heatmapMatrixConfig({ rows, cols, values, active, formatV }) {
+  const t = themeColors();
+  const fmt = formatV || ((v) => String(v));
+  const flat = values.flat();
+  const minV = Math.min(...flat), maxV = Math.max(...flat);
+  const data = [];
+  values.forEach((row, r) => row.forEach((v, c) => data.push({ x: c, y: r, v })));
+  return {
+    type: "matrix",
+    data: {
+      datasets: [{
+        data,
+        backgroundColor: (ctx) => {
+          const v = ctx.raw.v;
+          const tt = (v - minV) / (maxV - minV || 1);
+          return mixHex(t.surfaceCard, t.primary, tt);
+        },
+        borderColor: (ctx) => (active && ctx.raw.x === active.c && ctx.raw.y === active.r ? t.primary : "transparent"),
+        borderWidth: (ctx) => (active && ctx.raw.x === active.c && ctx.raw.y === active.r ? 2 : 0),
+        width: ({ chart }) => ((chart.chartArea || {}).width || 300) / cols.length - 6,
+        height: ({ chart }) => ((chart.chartArea || {}).height || 180) / rows.length - 6
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          ...tooltipStyle(t),
+          callbacks: {
+            title: () => "",
+            label: (ctx) => ` ${rows[ctx.raw.y]} × ${cols[ctx.raw.x]}: ${fmt(ctx.raw.v)}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: "category",
+          labels: cols,
+          grid: { display: false },
+          border: { display: false },
+          ticks: { color: t.textMuted, font: AXIS_FONT }
+        },
+        y: {
+          type: "category",
+          labels: rows,
+          reverse: true,
+          grid: { display: false },
+          border: { display: false },
+          ticks: { color: t.textMuted, font: AXIS_FONT }
+        }
+      }
+    }
+  };
+}
+
+/* Ekspor untuk pengujian node (tidak berpengaruh di browser). */
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    areaChart, donut, vBars, scoreMeter, candleChart, multiLine,
+    heatmapMatrix, heatmapMatrixConfig,
+    queueChart, mountCharts, destroyCharts,
+    cssVar, resolveColor, themeColors,
+    __queue: __chartQueue, __live: __chartLive
+  };
 }
