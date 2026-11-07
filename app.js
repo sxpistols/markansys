@@ -33,7 +33,8 @@ const state = {
   positions: DATA.positions.map((p) => ({ ...p })),
   portfolioTotal: DATA.portfolio.total,
   modalAwal: DATA.portfolio.modal,
-  histRange: "Semua",
+  histRange: "1 tahun",
+  moversTab: "Aktif",
   watchSector: "Semua", watchPrice: "Semua", watchMove: "Semua",
   detailRange: "1M",
   expandedRank: "BBCA",
@@ -185,12 +186,20 @@ function renderNav() {
   /* G5: sidebar mengikuti FigCraft — 8 item utama; Keadaan Khusus &
      Usulan Nama pindah ke seksi "Lainnya" agar tetap terjangkau.
      Panel Asisten AI tetap hanya lewat tombol topbar, bukan sidebar. */
-  const NAV_MAIN = NAV.slice(0, 8);
-  const NAV_OTHER = NAV.filter((n) => n.route === "keadaan" || n.route === "nama");
+  const NAV_SECTIONS = [
+    { label: "Menu", routes: ["ringkasan", "watchlist", "analisis"] },
+    { label: "Analisis", routes: ["dcf", "proyek"] },
+    /* LAINNYA (FigCraft v1.3): Alert, Sentimen, Tim. Keadaan Khusus &
+       Usulan Nama bukan item sidebar di FigCraft, tapi tetap
+       ditampilkan di sini agar tetap terjangkau di desktop (di mobile
+       lewat tombol "Lainnya" di bottombar). */
+    { label: "Lainnya", routes: ["alert", "sentimen", "tim", "keadaan", "nama"] }
+  ];
   const btn = (n) =>
-    `<button class="nav-item ${r === n.route ? "active" : ""}" data-route="${n.route}"><span class="ico">${n.ico}</span>${n.label}</button>`;
-  $("#nav").innerHTML = NAV_MAIN.map(btn).join("") +
-    `<div class="nav-section">Lainnya</div>` + NAV_OTHER.map(btn).join("");
+    `<button class="nav-item ${r === n.route ? "active" : ""}" data-route="${n.route}"><span class="ico">${n.ico}</span><span class="nav-label">${n.label}</span></button>`;
+  $("#nav").innerHTML = NAV_SECTIONS.map((s) =>
+    `<div class="nav-section">${s.label}</div>` + s.routes.map((rt) => btn(NAV.find((n) => n.route === rt))).join("")
+  ).join("");
   $("#bottombar").innerHTML = BOTTOM.map((n) =>
     `<button data-route="${n.route}" class="${r === n.route ? "active" : ""}"><span class="ico">${n.ico}</span>${n.label}</button>`
   ).join("");
@@ -377,26 +386,137 @@ function removeFromWatchlist(kode) {
 }
 
 /* ---------- Layar 01 — Ringkasan Portofolio ---------- */
-const HIST_RANGES = { "1H": 2, "1M": 3, "3B": 4, "1T": 11, "YTD": 11, "Semua": 11 };
-function sRingkasan() {
-  const p = DATA.portfolio;
-  const kpi = portfolioKpi();
+/* Layout mengikuti FigCraft v1.3.2 (gaya Prometheus): strip ticker di atas,
+   grafik Histori lebar penuh, 3 kartu (paling bergerak / sektor / berita),
+   Wawasan pasar + Sentimen pasar, 4 kartu KPI, kartu Ringkasan AI.
+   Tabel Posisi dan donat Alokasi TIDAK lagi di Ringkasan: posisi pindah
+   ke Layar 02 Watchlist (positionsCard di bawah), donat tetap dipakai
+   Layar 08 Sentimen. */
+const HIST_RANGES = ["7 hari", "30 hari", "90 hari", "180 hari", "1 tahun"];
+const HIST_DAYS = { "7 hari": 7, "30 hari": 30, "90 hari": 90, "180 hari": 180 };
+/* Seri histori sesuai retensi aktif. "1 tahun" memakai seri bulanan
+   Jan–Nov; retensi hari memakai seri harian (berakhir 6 Nov 2026). */
+function histSeries() {
+  if (state.histRange === "1 tahun") {
+    return { values: DATA.portfolio.history.values, labels: DATA.portfolio.history.labels };
+  }
+  const n = HIST_DAYS[state.histRange] || 30;
+  const d = DATA.portfolio.historyDaily;
+  return { values: d.values.slice(-n), labels: d.labels.slice(-n) };
+}
+/* Strip ticker (FigCraft v1.3): 5 aset, nama pendek sesuai desain
+   (BBRI "Bank Rakyat", GOTO "GoTo"). Harga dari state.watchlist. */
+const TICKER_NAMA = { BBCA: "Bank Central Asia", BBRI: "Bank Rakyat", TLKM: "Telkom Indonesia", GOTO: "GoTo", BTC: "Bitcoin" };
+const TICKER_HURUF = { BBCA: "B", BBRI: "B", TLKM: "T", GOTO: "G", BTC: "B" };
+function tickerStrip() {
+  const items = ["BBCA", "BBRI", "TLKM", "GOTO", "BTC"].map((kode) => {
+    const w = state.watchlist.find((x) => x.kode === kode);
+    if (!w) return "";
+    const up = w.chgPct >= 0;
+    const harga = w.harga >= 1e9 ? fmtSingkat(w.harga) : fmtRp(w.harga);
+    return `<button class="ticker-item" data-action="goto-detail" data-kode="${kode}" title="Lihat detail ${kode}">
+      <span class="ticker-ico" aria-hidden="true">${TICKER_HURUF[kode]}</span>
+      <span class="ticker-text"><span class="ticker-kode">${kode}</span><span class="ticker-nama">${TICKER_NAMA[kode]}</span></span>
+      <span class="ticker-text ticker-right"><span class="ticker-harga">${harga}</span><span class="${up ? "up" : "down"}">${fmtPct(w.chgPct, 2)}%</span></span>
+    </button>`;
+  }).join("");
+  return `<div class="ticker card" role="list" aria-label="Ticker harga">${items}</div>`;
+}
+/* Kartu "Saham paling bergerak": peringkat (DATA.ranking) + harga dan
+   perubahan dari watchlist. Tab Aktif/Naik/Turun memfilter baris. */
+function moversCard() {
+  const tab = state.moversTab || "Aktif";
+  const rows = DATA.ranking.map((rk) => {
+    const w = state.watchlist.find((x) => x.kode === rk.kode);
+    return { ...rk, harga: w ? w.harga : null, chgPct: w ? w.chgPct : 0 };
+  }).filter((r) => tab === "Aktif" ? true : tab === "Naik" ? r.chgPct >= 0 : r.chgPct < 0);
+  const body = rows.map((r) => `
+    <button class="movers-row" data-action="goto-detail" data-kode="${r.kode}">
+      <span class="movers-main"><strong>${r.kode}</strong><span class="sub">${esc(r.nama)}</span></span>
+      <span class="movers-score" style="color:${scoreColor(r.total)}">${r.total}</span>
+      <span class="movers-right"><span class="num">${r.harga ? fmtRp(r.harga) : "—"}</span><span class="${r.chgPct >= 0 ? "up" : "down"}">${fmtPct(r.chgPct, 2)}%</span></span>
+    </button>`).join("");
+  return `<div class="card">
+    <div class="card-head"><h2>Saham paling bergerak</h2><button class="link-btn" data-action="goto" data-route="analisis">Lihat semua</button></div>
+    <div class="tabs" style="margin-bottom:8px">${["Aktif", "Naik", "Turun"].map((t) => `<button class="tab ${tab === t ? "active" : ""}" data-action="movers-tab" data-tab="${t}">${t}</button>`).join("")}</div>
+    <div class="movers-list">${body || `<p class="muted">Tidak ada saham pada filter ini.</p>`}</div>
+  </div>`;
+}
+/* Kartu "Kinerja sektor" — nilai SAMPLE dari FigCraft v1.3, bukan data
+   pasar (lihat DATA.sectors di data.js + catatan kaki di kartu). */
+function sectorCard() {
+  const rows = DATA.sectors.map((s) => `
+    <tr><td>${s.nama}</td>
+      <td class="num ${s.harian >= 0 ? "up" : "down"}">${fmtPct(s.harian)}%</td>
+      <td class="num ${s.bulanan >= 0 ? "up" : "down"}">${fmtPct(s.bulanan)}%</td>
+      <td class="num ${s.total >= 0 ? "up" : "down"}">${fmtPct(s.total)}%</td></tr>`).join("");
+  return `<div class="card">
+    <div class="card-head"><h2>Kinerja sektor</h2><button class="link-btn" data-action="toast" data-msg="Detail sektor belum tersedia di versi contoh.">Lihat semua</button></div>
+    <table class="compact"><thead><tr><th>Sektor</th><th class="num">Perubahan %</th><th class="num">Perf 1 bln</th><th class="num">Tot perf</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="card-foot">Nilai sektor sample, bukan data pasar.</div>
+  </div>`;
+}
+/* Kartu "Berita teratas": 3 berita dari DATA.news (sama dengan Layar 08). */
+function newsCard() {
+  const items = DATA.news.map((n) => {
+    const cls = n.sentimen === "Positif" ? "up" : n.sentimen === "Negatif" ? "down" : "muted";
+    const skor = (n.skor > 0 ? "+" : n.skor < 0 ? "−" : "") + fmtNum(Math.abs(n.skor), 2);
+    return `<div class="news-item">
+      <div class="news-title">${esc(n.judul)}</div>
+      <div class="news-meta"><span>${esc(n.sumber)}, ${esc(n.tanggal)}</span><span class="${cls}">${n.sentimen}</span><span class="num ${cls}">${skor}</span></div>
+    </div>`;
+  }).join("");
+  return `<div class="card">
+    <div class="card-head"><h2>Berita teratas</h2><button class="link-btn" data-action="goto" data-route="sentimen">Lihat semua</button></div>
+    <div class="news-list">${items}</div>
+  </div>`;
+}
+/* Kartu "Wawasan pasar": 5 saham IDX dari watchlist. */
+const WAWASAN_KODE = ["BBCA", "BBRI", "TLKM", "ASII", "GOTO"];
+function wawasanCard() {
+  const rows = WAWASAN_KODE.map((kode) => state.watchlist.find((w) => w.kode === kode)).filter(Boolean).map((w) => {
+    const up = w.chgPct >= 0;
+    return `<tr class="clickable" data-action="goto-detail" data-kode="${w.kode}">
+      <td><strong>${w.kode}</strong></td>
+      <td class="num">${fmtRp(w.harga)}</td>
+      <td class="num ${up ? "up" : "down"}">${up ? "+" : "−"}${fmtRp(Math.abs(w.chgRp))}</td>
+      <td class="num ${up ? "up" : "down"}">${fmtPct(w.chgPct, 2)}%</td>
+      <td class="muted">${w.update}</td>
+    </tr>`;
+  }).join("");
+  return `<div class="card">
+    <div class="card-head"><h2>Wawasan pasar</h2><button class="link-btn" data-action="goto" data-route="watchlist">Lihat semua</button></div>
+    <table><thead><tr><th>Kode</th><th class="num">Harga</th><th class="num">Perubahan (Rp)</th><th class="num">Perubahan %</th><th>Update</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+  </div>`;
+}
+/* Kartu "Sentimen pasar": skor −1..+1 per aset (DATA.sentimentByAsset),
+   digambar sebagai bar menyimpang dari tengah (CSS, tanpa grafik baru). */
+function sentimenCard() {
+  const rows = DATA.sentimentByAsset.map((a) => {
+    const pct = a.skor * 50; // skor −1..+1 → −50..+50% dari garis tengah
+    const left = Math.min(50, 50 + pct), width = Math.abs(pct);
+    const cls = a.skor >= 0 ? "sent-pos" : "sent-neg";
+    const skorTxt = (a.skor > 0 ? "+" : a.skor < 0 ? "−" : "") + fmtNum(Math.abs(a.skor), 2);
+    return `<div class="sent-row">
+      <span class="sent-kode">${a.kode}</span>
+      <span class="sent-track"><span class="sent-mid"></span><span class="sent-fill ${cls}" style="left:${left}%;width:${width}%"></span></span>
+      <span class="num ${a.skor >= 0 ? "up" : "down"}">${skorTxt}</span>
+      <button class="pill-btn" data-action="goto-detail" data-kode="${a.kode}">Analisis</button>
+    </div>`;
+  }).join("");
+  return `<div class="card">
+    <div class="card-head"><h2>Sentimen pasar</h2><button class="link-btn" data-action="goto" data-route="sentimen">Lihat semua</button></div>
+    <div class="sent-list">${rows}</div>
+    <div class="card-foot">Skor −1 sampai +1. Positif bila di atas 0,15.</div>
+  </div>`;
+}
+/* Tabel Posisi Portofolio — pindah dari Ringkasan ke Watchlist (FigCraft
+   v1.3): Ringkasan baru tidak lagi menampilkan posisi. */
+function positionsRows() {
   const pos = filteredRows(state.positions, ["kode", "nama"]);
-  // Rentang histori: data bulanan Jan–Nov (11 titik); 1T/YTD/Semua sama
-  // karena data hanya 11 bulan. 1H menampilkan 2 titik terakhir agar garis
-  // tetap bisa digambar.
-  const histN = HIST_RANGES[state.histRange] || 11;
-  const histVals = p.history.values.slice(-histN);
-  const histLabels = p.history.labels.slice(-histN);
-  const hMin = Math.min(...histVals), hMax = Math.max(...histVals);
-  const hist = areaChart({
-    w: 640, h: 200, values: histVals, labels: histLabels,
-    ymin: Math.floor((hMin - 15) / 10) * 10, ymax: Math.ceil((hMax + 15) / 10) * 10, id: "hist",
-    formatY: (v) => "Rp " + fmtNum(v / 1000, 2) + " M"
-  });
-  const alloc = p.allocation;
-  const donutSvg = donut({ size: 180, thick: 26, segments: alloc.map((a) => ({ value: a.pct, color: a.color })), center: { title: fmtSingkat(kpi.total), sub: "Total" } });
-  const rows = pos.map((r) => {
+  const kpi = portfolioKpi();
+  return pos.map((r) => {
     const nilai = posNilai(r), pnl = posPnl(r), pnlPct = posPnlPct(r);
     const bobot = kpi.total ? (nilai / kpi.total) * 100 : 0;
     return `
@@ -410,37 +530,51 @@ function sRingkasan() {
       <td class="num">${fmtNum(bobot, 1)}%</td>
     </tr>`;
   }).join("");
+}
+function positionsCard() {
+  const rows = positionsRows();
+  return `<div class="card mt">
+    <div class="card-head"><h2>Posisi Portofolio</h2><div class="row" style="gap:8px"><button class="btn btn-ghost btn-small" data-action="open-modal-awal">Ubah Modal Awal</button><button class="btn btn-primary btn-small" data-action="open-add-position">Tambah Posisi</button></div></div>
+    <table><thead><tr><th>Aset</th><th class="num">Jumlah</th><th class="num">Rata-rata Beli</th><th class="num">Harga Terkini</th><th class="num">Nilai</th><th class="num">Untung/Rugi</th><th class="num">Bobot</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="7" class="muted">Tidak ada posisi yang cocok dengan pencarian.</td></tr>`}</tbody></table>
+    <div class="card-foot">Sumber: IDX (tertunda 15 mnt) &middot; ${DATA.meta.updated} &nbsp; <span class="badge badge-delayed">Tertunda 15 mnt</span> ${srcTag()}</div>
+  </div>`;
+}
+function sRingkasan() {
+  const kpi = portfolioKpi();
+  const { values: histVals, labels: histLabels } = histSeries();
+  const hMin = Math.min(...histVals), hMax = Math.max(...histVals);
+  const ymin = Math.floor((hMin - 15) / 10) * 10, ymax = Math.ceil((hMax + 15) / 10) * 10;
+  const hist = areaChart({
+    w: 1024, h: 200, values: histVals, labels: histLabels,
+    ymin, ymax, id: "hist",
+    formatY: (v) => "Rp " + fmtNum(v / 1000, 2) + " M"
+  });
   return `
-  <div class="grid grid-4">
-    <div class="card"><div class="kpi-label">Total Nilai</div><div class="kpi-value">${fmtSingkat(kpi.total)}</div>
+  ${tickerStrip()}
+  <div class="card mt">
+    <div class="card-head"><h2>Histori Portofolio</h2><div class="row" style="gap:4px">${HIST_RANGES.map((r) => `<button class="tab ${state.histRange === r ? "active" : ""}" data-action="hist-range" data-range="${r}">${r}</button>`).join("")}${srcTag()}</div></div>
+    <div class="chart-wrap">${hist}</div>
+    <div class="card-foot">Sumbu Y mulai Rp ${fmtNum(ymin / 1000, 2)} M, data dummy (seri disintesis).</div>
+  </div>
+  <div class="grid grid-3 mt">
+    ${moversCard()}
+    ${sectorCard()}
+    ${newsCard()}
+  </div>
+  <div class="grid grid-2-1 mt">
+    ${wawasanCard()}
+    ${sentimenCard()}
+  </div>
+  <div class="grid grid-4 mt">
+    <div class="card"><div class="kpi-label">Total Portofolio</div><div class="kpi-value">${fmtSingkat(kpi.total)}</div>
       <div class="kpi-sub">${badgeChg(kpi.profitPct)}<span>modal ${fmtSingkat(state.modalAwal)}</span></div></div>
-    <div class="card"><div class="kpi-label">Untung / Rugi</div><div class="kpi-value">${kpi.profit >= 0 ? "+" : "−"}${fmtSingkat(Math.abs(kpi.profit))}</div>
+    <div class="card"><div class="kpi-label">Total Profit</div><div class="kpi-value">${kpi.profit >= 0 ? "+" : "−"}${fmtSingkat(Math.abs(kpi.profit))}</div>
       <div class="kpi-sub">${badgeChg(kpi.profitPct)}<span>vs modal awal</span></div></div>
     <div class="card"><div class="kpi-label">Aset Terbaik</div><div class="kpi-value">${kpi.best ? kpi.best.kode : "—"}</div>
       <div class="kpi-sub">${kpi.best ? badgeChg(posPnlPct(kpi.best)) : ""}<span>${kpi.best ? esc(kpi.best.nama) : ""}</span></div></div>
     <div class="card"><div class="kpi-label">Aset Terburuk</div><div class="kpi-value">${kpi.worst ? kpi.worst.kode : "—"}</div>
       <div class="kpi-sub">${kpi.worst ? badgeChg(posPnlPct(kpi.worst)) : ""}<span>${kpi.worst ? esc(kpi.worst.nama) : ""}</span></div></div>
-  </div>
-  <div class="grid grid-2-1 mt">
-    <div class="card">
-      <div class="card-head"><h2>Histori Portofolio</h2><div class="row" style="gap:4px">${["1H", "1M", "3B", "1T", "YTD", "Semua"].map((r) => `<button class="tab ${state.histRange === r ? "active" : ""}" data-action="hist-range" data-range="${r}">${r}</button>`).join("")}${srcTag()}</div></div>
-      <div class="chart-wrap">${hist}</div>
-      <div class="card-foot">Sumbu Y mulai Rp 1,10 M, data dummy (seri disintesis).</div>
-    </div>
-    <div class="card">
-      <div class="card-head"><h2>Alokasi per Kelas Aset</h2></div>
-      <div class="donut-flex">
-        <div class="donut-box">${donutSvg}</div>
-        <div class="legend">${alloc.map((a) => `<div class="legend-row"><span class="swatch" style="background:${a.color}"></span>${a.label}<span class="val">${a.pct}%</span></div>`).join("")}</div>
-      </div>
-      <div class="card-foot">Saham IDX mendominasi &middot; Data dummy</div>
-    </div>
-  </div>
-  <div class="card mt">
-    <div class="card-head"><h2>Posisi Portofolio</h2><div class="row" style="gap:8px"><button class="btn btn-ghost btn-small" data-action="open-modal-awal">Ubah Modal Awal</button><button class="btn btn-primary btn-small" data-action="open-add-position">Tambah Posisi</button></div></div>
-    <table><thead><tr><th>Aset</th><th class="num">Jumlah</th><th class="num">Rata-rata Beli</th><th class="num">Harga Terkini</th><th class="num">Nilai</th><th class="num">Untung/Rugi</th><th class="num">Bobot</th></tr></thead>
-    <tbody>${rows || `<tr><td colspan="7" class="muted">Tidak ada posisi yang cocok dengan pencarian.</td></tr>`}</tbody></table>
-    <div class="card-foot">Sumber: IDX (tertunda 15 mnt) &middot; ${DATA.meta.updated} &nbsp; <span class="badge badge-delayed">Tertunda 15 mnt</span> ${srcTag()}</div>
   </div>
   <div class="card mt">
     <div class="card-head"><h2>&#10022; Ringkasan AI</h2></div>
@@ -504,6 +638,7 @@ function sWatchlist() {
     <tbody>${body}</tbody></table>
     <div class="card-foot">Volume dan sparkline 7 hari tidak ada pada data contoh.</div>
   </div>
+  ${positionsCard()}
   ${disclaimer()}`;
 }
 
@@ -594,10 +729,11 @@ function maFull(arr, n) {
 }
 function sDetail() {
   const b = DATA.bbca;
-  // 200 candle {o,h,l,c} deterministik; rentang memilih berapa candle
-  // terakhir yang ditampilkan. MA 50/200 dihitung dari SELURUH 200 candle
-  // lalu dipotong mengikuti rentang yang sama, supaya nilainya tetap benar
-  // di rentang pendek (1H/1M/3B).
+  // 400 candle {o,h,l,c} deterministik; rentang memilih berapa candle
+  // terakhir yang ditampilkan ("Semua" = 200 terakhir). MA 50/200 dihitung
+  // dari SELURUH 400 candle lalu dipotong mengikuti rentang yang sama,
+  // supaya nilainya tetap benar di rentang pendek (1H/1M/3B). 400 (bukan
+  // 200) supaya MA200 valid di seluruh 200 candle tampil, bukan 1 titik.
   const n = DETAIL_RANGES[state.detailRange] || 200;
   const candles = b.ohlc.slice(-n);
   const closes = b.ohlc.map((c) => c.c);
@@ -693,13 +829,15 @@ function sDetail() {
 }
 
 /* ---------- Layar 05/* ---------- Layar 05 — Valuasi Saham (DCF) ---------- */
-/* Heatmap DCF (Chart.js): grid dihitung dari model yang sama seperti
+/* Heatmap DCF (D3): grid dihitung dari model yang sama seperti
    sebelumnya (dcfValue per kombinasi WACC x pertumbuhan terminal).
-   Asumsi kontrak W2: heatmapMatrix({rows, cols, values, active, formatV})
-   mengembalikan markup canvas (terdaftar via queueChart); rows = label
-   WACC, cols = label pertumbuhan terminal, values = grid 2D angka,
-   active = { r, c } sel asumsi saat ini, formatV = pemformat nilai sel.
-   Mengembalikan markup canvas Chart.js (matrix). */
+   heatmapMatrix({rows, cols, values, active, formatV}) mengembalikan
+   markup SVG inline; rows = label WACC, cols = label pertumbuhan
+   terminal, values = grid 2D angka, active = { r, c } sel asumsi saat
+   ini, formatV = pemformat nilai sel. updateDCF() membangun ulang
+   innerHTML #dcfHeat tiap slider berubah; tidak ada mount yang
+   dibutuhkan (destroyCharts()/mountCharts() tetap dipanggil sebagai
+   stub yang aman). */
 function dcfHeatHTML() {
   const d = state.dcf;
   const grid = DATA.dcf.sensGrid.map((row, i) =>
@@ -917,10 +1055,7 @@ function sSentimen() {
       <div class="card-foot">Berdasarkan ${total} berita pada data contoh</div>
     </div>
     <div class="card"><h2>Skor per Aset</h2>
-      ${DATA.sentimentByAsset.map((s) => `
-      <div class="row" style="margin-top:14px"><span style="width:52px"><strong>${s.kode}</strong></span>
-      ${scoreMeter({ w: 220, value: s.skor })}
-      <span class="num ${s.skor >= 0.15 ? "up" : s.skor <= -0.15 ? "down" : ""}" style="width:56px;text-align:right">${s.skor > 0 ? "+" : ""}${fmtNum(s.skor, 2)}</span></div>`).join("")}
+      <div style="margin-top:12px">${divergingBars({ items: DATA.sentimentByAsset.map((s) => ({ label: s.kode, value: s.skor })) })}</div>
       <div class="card-foot">Skor −1 sampai +1. Positif bila di atas 0,15.</div>
     </div>
   </div>
@@ -1208,6 +1343,8 @@ document.addEventListener("click", (e) => {
   else if (a === "detail-tab") { state.detailTab = el.dataset.tab; render(); }
   else if (a === "alert-tab") { state.alertTab = el.dataset.tab; render(); }
   else if (a === "hist-range") { state.histRange = el.dataset.range; render(); }
+  else if (a === "movers-tab") { state.moversTab = el.dataset.tab; render(); }
+  else if (a === "toggle-sidebar") { applySidebar(true); }
   else if (a === "detail-range") { state.detailRange = el.dataset.range; render(); }
   else if (a === "open-modal-awal") openModalAwal();
   else if (a === "save-modal-awal") {
@@ -1381,6 +1518,22 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && e.target.id === "aiInput") aiAsk(e.target.value);
 });
 
+/* ---------- Sidebar: ciutkan/perluas (FigCraft v1.3 ikon «) ---------- */
+function applySidebar(toggle) {
+  let collapsed = localStorage.getItem("aai-sidebar") === "collapsed";
+  if (toggle) {
+    collapsed = !collapsed;
+    localStorage.setItem("aai-sidebar", collapsed ? "collapsed" : "expanded");
+  }
+  document.body.classList.toggle("sidebar-collapsed", collapsed);
+  const b = $("#sidebarCollapse");
+  if (b) {
+    b.innerHTML = collapsed ? "&raquo;" : "&laquo;";
+    b.title = collapsed ? "Perluas sidebar" : "Ciutkan sidebar";
+    b.setAttribute("aria-label", collapsed ? "Perluas sidebar" : "Ciutkan sidebar");
+  }
+}
+
 /* ---------- Tema ---------- */
 function applyTheme() {
   document.documentElement.dataset.theme = state.theme;
@@ -1391,9 +1544,9 @@ $("#themeToggle").addEventListener("click", () => {
   state.theme = state.theme === "dark" ? "light" : "dark";
   localStorage.setItem("aai-theme", state.theme);
   applyTheme();
-  /* Chart.js: warna chart dibaca saat mount, jadi render ulang agar
-     chart dibuat ulang mengikuti tema baru (render memanggil
-     destroyCharts + mountCharts). */
+  /* D3: warna grafik dibaca dari CSS variables saat render, jadi
+     render ulang agar grafik dibuat ulang mengikuti tema baru (render
+     memanggil destroyCharts + mountCharts). */
   render();
 });
 $("#aiOpenBtn").addEventListener("click", openAI);
@@ -1414,4 +1567,5 @@ function afterRender(route) {
 }
 window.addEventListener("hashchange", render);
 applyTheme();
+applySidebar();
 render();

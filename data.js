@@ -37,6 +37,32 @@ function genCandles(n, seed) {
   return out;
 }
 
+/* ---------- Seri harian portofolio (Dummy, deterministik) ---------- */
+// Dipakai retensi 7/30/90/180 hari di grafik Histori Ringkasan (FigCraft
+// v1.3.2). Nilai dalam Rp jt, sama seperti history bulanan. Dibangun
+// MUNDUR dari titik terakhir (= total portofolio 1.284,56) agar ujung
+// kanan grafik selalu sama dengan total saat ini. Label "31 Okt" dst.
+const BULAN_ID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+function tglSingkat(d) { return d.getDate() + " " + BULAN_ID[d.getMonth()]; }
+function genDailyPortfolio(n, seed) {
+  const rnd = mulberry32(seed);
+  const values = new Array(n);
+  values[n - 1] = 1284.56;
+  let v = 1284.56;
+  for (let i = n - 2; i >= 0; i--) {
+    v = v - (rnd() - 0.485) * 14;
+    v = Math.max(1100, Math.min(1290, v));
+    values[i] = Math.round(v * 100) / 100;
+  }
+  const labels = [];
+  const end = new Date(2026, 10, 6); // 6 Nov 2026 (DATA.meta.updated)
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(end); d.setDate(d.getDate() - i);
+    labels.push(tglSingkat(d));
+  }
+  return { labels, values };
+}
+
 const DATA = {
   meta: { updated: "6 Nov 2026, 14:32 WIB", idxDelayed: true, source: "IDX (tertunda 15 mnt)" },
 
@@ -50,6 +76,10 @@ const DATA = {
       values: [1150, 1170, 1155, 1200, 1190, 1230, 1220, 1250, 1240, 1270, 1284.56],
       unit: "Rp T"
     },
+    // Seri harian (365 titik, berakhir 6 Nov 2026) untuk retensi 7/30/90/
+    // 180 hari. Dipakai grafik Histori Ringkasan; "1 tahun" memakai
+    // history bulanan di atas.
+    historyDaily: genDailyPortfolio(365, 20261106),
     allocation: [
       { label: "Saham IDX", pct: 58, color: "var(--chart-1)" },
       { label: "Kripto", pct: 14, color: "var(--chart-2)" },
@@ -89,6 +119,16 @@ const DATA = {
   ],
   weights: { fund: 50, tekn: 35, sent: 15 },
 
+  // Kinerja sektor (SAMPLE, bukan data pasar — sesuai FigCraft v1.3 kartu
+  // "Kinerja sektor" + catatan "Nilai sektor sample, bukan data pasar.").
+  // Kolom: perubahan % (harian) | performa 1 bulan | total performa.
+  sectors: [
+    { nama: "Teknologi", harian: 1.8, bulanan: 4.2, total: 12.6 },
+    { nama: "Keuangan", harian: 0.9, bulanan: 2.8, total: 9.4 },
+    { nama: "Energi", harian: -0.6, bulanan: 1.1, total: 3.8 },
+    { nama: "Konsumer", harian: 0.4, bulanan: 0.7, total: 2.1 }
+  ],
+
   bbca: {
     kode: "BBCA", nama: "Bank Central Asia", harga: 9725, chgPct: 1.25,
     per: 22.4, pbv: 4.1, roe: 20.3, divYield: 2.6, labaYoY: 8.5,
@@ -101,7 +141,7 @@ const DATA = {
     // 200 candle sintetis DETERMINISTIK (Dummy) — generator seed tetap di
     // atas file, jadi angkanya sama di setiap render. Candle terakhir
     // ditutup di harga pasar 9.725.
-    ohlc: genCandles(200, 20261106)
+    ohlc: genCandles(400, 20261106)
   },
 
   dcf: {

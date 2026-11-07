@@ -218,16 +218,19 @@ tr.clickable { cursor: pointer; }
 
 /* charts */
 .chart-wrap { width: 100%; position: relative; }
-.chart-wrap canvas { display: block; }
-/* Chart.js: tooltip kini native; pembungkus inline
-   dipertahankan untuk scoreMeter. */
+.chart-wrap svg { display: block; width: 100%; height: 100%; }
+/* Pembungkus inline dipertahankan untuk scoreMeter. */
 .chart-wrap-inline { position: relative; display: inline-block; }
+.chart-wrap-inline svg { display: block; }
+/* Tooltip D3 (satu elemen terdelegasi; lihat charts.js). */
+.d3-tip { position: fixed; z-index: 9999; pointer-events: none; background: var(--surface-raised); color: var(--text-primary); border: 1px solid var(--border-strong); border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.5; box-shadow: 0 4px 16px rgba(0,0,0,.25); max-width: 260px; display: none; }
+.d3-tip strong { font-weight: 600; }
 .legend { display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
 .legend-row { display: flex; align-items: center; gap: 8px; }
 .legend-row .swatch { width: 12px; height: 12px; border-radius: 3px; flex: 0 0 12px; }
 .legend-row .val { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
 
-/* donut center (teks tengah kini digambar plugin Chart.js di canvas) */
+/* donut center (teks tengah digambar sebagai teks SVG oleh charts.js) */
 .donut-flex { display: flex; align-items: center; gap: 24px; }
 .donut-box { position: relative; width: 180px; height: 180px; flex: 0 0 180px; }
 
@@ -335,3 +338,58 @@ tr.clickable { cursor: pointer; }
 @media (max-width: 1100px) {
   .fixb-row-2 { grid-template-columns: 1fr; }
 }
+
+/* ---------- Ringkasan v1.3 (gaya Prometheus) ---------- */
+/* Strip ticker */
+.ticker { display: flex; align-items: stretch; padding: 8px 12px; overflow-x: auto; }
+.ticker-item { display: flex; align-items: center; gap: 10px; flex: 1 1 0; min-width: 190px; padding: 8px 16px; border: 0; background: none; text-align: left; border-right: 1px solid var(--border-default); }
+.ticker-item:last-child { border-right: 0; }
+.ticker-item:hover { background: var(--surface-raised); border-radius: 8px; }
+.ticker-ico { width: 28px; height: 28px; flex: 0 0 28px; border-radius: 50%; background: var(--surface-raised); border: 1px solid var(--border-default); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: var(--text-secondary); }
+.ticker-text { display: flex; flex-direction: column; line-height: 18px; min-width: 0; }
+.ticker-kode { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+.ticker-nama { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ticker-right { margin-left: auto; text-align: right; }
+.ticker-harga { font-size: 13px; font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.ticker-right .up, .ticker-right .down { font-size: 12px; }
+/* "Lihat semua" kecil */
+.link-btn { background: none; border: 0; color: var(--primary-default); font-size: 13px; font-weight: 600; padding: 4px 0; white-space: nowrap; }
+.link-btn:hover { text-decoration: underline; }
+/* Baris saham paling bergerak */
+.movers-list { display: flex; flex-direction: column; }
+.movers-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 4px; border: 0; border-bottom: 1px solid var(--border-default); background: none; text-align: left; }
+.movers-row:last-child { border-bottom: 0; }
+.movers-row:hover { background: var(--surface-raised); border-radius: 8px; }
+.movers-main { display: flex; flex-direction: column; line-height: 18px; min-width: 0; flex: 1; }
+.movers-score { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.movers-right { display: flex; flex-direction: column; align-items: flex-end; line-height: 18px; font-size: 13px; }
+/* Berita teratas */
+.news-list { display: flex; flex-direction: column; }
+.news-item { padding: 10px 0; border-bottom: 1px solid var(--border-default); }
+.news-item:last-child { border-bottom: 0; }
+.news-title { font-size: 14px; font-weight: 600; line-height: 20px; color: var(--text-primary); }
+.news-meta { display: flex; align-items: center; gap: 12px; margin-top: 4px; font-size: 12px; color: var(--text-muted); }
+.news-meta .num { margin-left: auto; font-weight: 600; }
+/* Sentimen: bar menyimpang dari tengah */
+.sent-list { display: flex; flex-direction: column; gap: 4px; }
+.sent-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--border-default); }
+.sent-row:last-child { border-bottom: 0; }
+.sent-kode { width: 44px; font-weight: 700; font-size: 13px; }
+.sent-track { position: relative; flex: 1; height: 8px; background: var(--surface-raised); border-radius: 999px; }
+.sent-mid { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--border-strong); }
+.sent-fill { position: absolute; top: 0; bottom: 0; border-radius: 999px; }
+.sent-pos { background: var(--market-up); }
+.sent-neg { background: var(--market-down); }
+.sent-row .num { width: 52px; text-align: right; font-size: 13px; font-weight: 600; }
+.pill-btn { background: var(--primary-subtle); color: var(--primary-default); border: 0; border-radius: 999px; padding: 4px 12px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.pill-btn:hover { background: var(--surface-raised); }
+/* Tabel ringkas di kartu */
+table.compact th, table.compact td { padding: 8px; }
+/* Sidebar: tombol collapse + keadaan ciut */
+#sidebarCollapse { margin-left: auto; flex: 0 0 36px; }
+body.sidebar-collapsed #sidebar { width: 64px; flex-basis: 64px; }
+body.sidebar-collapsed .brand { padding: 16px 12px 12px; justify-content: center; }
+body.sidebar-collapsed .brand-mark, body.sidebar-collapsed .brand-text, body.sidebar-collapsed .nav-section, body.sidebar-collapsed .sidebar-foot { display: none; }
+body.sidebar-collapsed .nav-label { display: none; }
+body.sidebar-collapsed .nav-item { justify-content: center; padding: 10px 0; }
+body.sidebar-collapsed #nav { padding: 12px 8px; }
