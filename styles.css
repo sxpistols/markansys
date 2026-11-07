@@ -200,7 +200,7 @@ tr.clickable { cursor: pointer; }
 .sub { font-size: 12px; color: var(--text-muted); line-height: 18px; }
 
 /* tabs */
-.tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+.tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 .tab {
   border: 0; background: none; color: var(--text-secondary); font-size: 14px; font-weight: 500;
   padding: 8px 16px; border-radius: 999px;
@@ -279,6 +279,9 @@ tr.clickable { cursor: pointer; }
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 60; display: flex; align-items: center; justify-content: center; padding: 16px; }
 .modal { background: var(--surface-card); border: 1px solid var(--border-default); border-radius: 16px; width: 640px; max-width: 100%; max-height: 90vh; overflow-y: auto; padding: 24px; box-shadow: var(--shadow-modal); }
 .modal h2 { margin-bottom: 16px; }
+/* Jarak antar-item menu "Layar lainnya" (temuan 2026-11-07: item menempel
+   tanpa jarak karena .modal bukan flex/grid sehingga gap tidak berlaku). */
+.modal .nav-item + .nav-item { margin-top: 8px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 8px; }
 #toastRoot { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 80; display: flex; flex-direction: column; gap: 8px; align-items: center; }
 .toast { background: var(--surface-raised); color: var(--text-primary); border: 1px solid var(--border-default); border-radius: 8px; padding: 10px 16px; font-size: 14px; box-shadow: var(--shadow-modal); }
@@ -365,7 +368,11 @@ tr.clickable { cursor: pointer; }
 
 /* ---------- Ringkasan v1.3 (gaya Prometheus) ---------- */
 /* Strip ticker */
-.ticker { display: flex; align-items: stretch; padding: 8px 12px; overflow-x: auto; }
+.ticker { display: flex; align-items: stretch; padding: 8px 12px; overflow-x: auto; margin-bottom: 16px; }
+/* Jarak di bawah ticker (temuan 2026-11-07: tab/kartu menempel di bawah
+   ticker tanpa jarak). Bila elemen di bawahnya sudah punya .mt, turunkan
+   jadi 8px supaya totalnya 24px (bukan 16+24=40px). */
+.ticker + .mt { margin-top: 8px; }
 .ticker-item { display: flex; align-items: center; gap: 10px; flex: 1 1 0; min-width: 190px; padding: 8px 16px; border: 0; background: none; text-align: left; border-right: 1px solid var(--border-default); }
 .ticker-item:last-child { border-right: 0; }
 .ticker-item:hover { background: var(--surface-raised); border-radius: 8px; }
