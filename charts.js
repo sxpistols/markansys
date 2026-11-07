@@ -230,7 +230,13 @@ function destroyCharts() { __tipHide(); }
    aspek viewBox (aspect-ratio), SVG diskala seragam — teks TIDAK
    terdistorsi di layar lebar/sempit. Dipakai grafik Histori (temuan
    responsif 2026-11-07: label sumbu-X melebar saat fullscreen). */
-function svgWrap(inner, W, H, extra = "", fit = "none") {
+/* svgWrap: SEMUA grafik skala seragam (meet + aspect-ratio) secara default.
+   Dulu default-nya "none" (preserveAspectRatio="none") sehingga isi SVG
+   ditarik mengikuti wadah: bila lebar wadah ≠ aspek viewBox, teks sumbu
+   jadi ketarik horizontal (temuan 2026-11-07: label "NPV per Skema" dan
+   "Arus Kas Kumulatif" di layar Proyek). Dengan "meet", teks tidak pernah
+   distorsi; tinggi wadah mengikuti aspek viewBox. */
+function svgWrap(inner, W, H, extra = "", fit = "meet") {
   if (fit === "meet") {
     return `<div class="chart-wrap" style="position:relative;aspect-ratio:${W}/${H};${extra}"><svg width="100%" height="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img">${inner}</svg></div>`;
   }
@@ -256,7 +262,7 @@ function leftMargin(tickLabels) {
 
 /* ---------- Grafik area (histori portofolio / arus kas kumulatif) ---------- */
 /* Tinggi mengikuti normalisasi lama: Histori 235px, Arus Kas ("cum") 180px. */
-function areaChart({ w = 1024, h = 180, values, labels, ymin, ymax, color = "var(--chart-1)", formatY = (v) => v, id = "g", uniform = false }) {
+function areaChart({ w = 1024, h = 180, values, labels, ymin, ymax, color = "var(--chart-1)", formatY = (v) => v, id = "g" }) {
   const t = themeColors();
   const col = resolveColor(color, t.chart1);
   const H = id === "cum" ? 180 : 235;
@@ -291,7 +297,7 @@ function areaChart({ w = 1024, h = 180, values, labels, ymin, ymax, color = "var
     s += `<circle cx="${r2(x(i))}" cy="${r2(y(v))}" r="10" fill="transparent" data-tip="${escAttr(tip)}"/>`;
   });
   s += `<circle cx="${r2(x(n - 1))}" cy="${r2(y(values[n - 1]))}" r="4" fill="${escAttr(col)}" data-tip="${escAttr(`${labs[n - 1]}: ${formatY(values[n - 1])}`)}"/>`;
-  return svgWrap(s, W, H, "", uniform ? "meet" : "none");
+  return svgWrap(s, W, H, "");
 }
 
 /* ---------- Donat ---------- */

@@ -549,7 +549,7 @@ function sRingkasan() {
   const ymin = Math.floor((hMin - 15) / 10) * 10, ymax = Math.ceil((hMax + 15) / 10) * 10;
   const hist = areaChart({
     w: 1024, h: 200, values: histVals, labels: histLabels,
-    ymin, ymax, id: "hist", uniform: true,
+    ymin, ymax, id: "hist",
     formatY: (v) => "Rp " + fmtNum(v / 1000, 2) + " M"
   });
   return `
