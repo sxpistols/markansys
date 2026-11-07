@@ -294,9 +294,21 @@ tr.clickable { cursor: pointer; }
   #sidebar { display: none; }
   #topbar { padding: 12px 16px; flex-wrap: wrap; }
   #topbar h1 { font-size: 24px; line-height: 32px; }
-  .search-box { width: 100%; order: 3; }
+  /* Topbar mobile: baris 1 = judul, baris 2 = .topbar-right (badge, tema,
+     tombol AI), baris 3 = kotak cari selebar layar. Sebelumnya kotak cari
+     (width:100%) bersarang di .topbar-right yang tidak membungkus, sehingga
+     .topbar-right melebar melewati viewport dan seluruh halaman ikut
+     bergeser — menu atas/bawah terpotong, ada ruang kosong di kanan.
+     Temuan mobile 2026-11-07 (layar Alert). */
+  .topbar-right { flex: 1 1 100%; flex-wrap: wrap; }
+  .search-box { flex: 1 1 100%; width: auto; order: 3; }
   .search-box kbd { display: none; }
   #view { padding: 16px 16px 90px; }
+  /* Pengaman mobile: elemen lebar apa pun tidak boleh lagi menggeser
+     halaman (menu bawah fixed ikut bergeser bila halaman meluber).
+     `clip` tidak membuat scroll container, jadi sticky topbar tetap
+     bekerja; tabel & ticker tetap scroll di dalam dirinya sendiri. */
+  html, body { overflow-x: clip; }
   .grid-4 { grid-template-columns: repeat(2, 1fr); }
   #bottombar {
     display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
