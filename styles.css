@@ -156,7 +156,7 @@ input[type="range"] { width: 100%; accent-color: var(--primary-default); }
 
 /* ---------- Cards, grids, tables ---------- */
 .card { background: var(--surface-card); border: 1px solid var(--border-default); border-radius: 12px; padding: 20px; }
-.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
 .card-head h2 { font-size: 16px; line-height: 24px; }
 .card-foot { margin-top: 12px; font-size: 12px; line-height: 18px; color: var(--text-muted); }
 .grid { display: grid; gap: 24px; }
@@ -194,7 +194,7 @@ tr.clickable { cursor: pointer; }
   padding: 8px 16px; border-radius: 999px;
 }
 .tab:hover { background: var(--surface-raised); color: var(--text-primary); }
-.tab.active { background: var(--primary-subtle); color: var(--primary-default); font-weight: 600; }
+.tab.active { background: var(--primary-subtle); color: var(--primary-hover); font-weight: 600; }
 .tab .soon { font-size: 11px; background: var(--surface-raised); color: var(--text-muted); border-radius: 999px; padding: 1px 6px; margin-left: 6px; }
 
 /* score */

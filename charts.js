@@ -7,8 +7,13 @@
      `.chart-wrap` (scoreMeter: `<span class="chart-wrap-inline">`).
      SVG: width="100%" height="100%", viewBox="0 0 W H",
      preserveAspectRatio="none" (meregang ke lebar container, seperti
-     perilaku canvas dulu). Garis grid/sumbu memakai
-     vector-effect="non-scaling-stroke" supaya tebalnya stabil.
+     perilaku canvas dulu) — KECUALI areaChart dengan opsi `uniform: true`
+     (grafik Histori): wrapper memakai aspect-ratio viewBox dan
+     preserveAspectRatio="xMidYMid meet" supaya teks TIDAK terdistorsi
+     saat container lebih lebar/sempit dari viewBox (temuan responsif
+     2026-11-07: label sumbu-X melebar saat fullscreen). Garis
+     grid/sumbu memakai vector-effect="non-scaling-stroke" supaya
+     tebalnya stabil.
    - Warna diambil dari CSS variables SAAT fungsi dipanggil (helper
      cssVar / themeColors) — jadi setelah ganti tema, integrator WAJIB
      me-render ulang layar (render() sudah memanggil destroyCharts()
@@ -219,7 +224,16 @@ function mountCharts() { installTipListeners(); return 0; }
 function destroyCharts() { __tipHide(); }
 
 /* ---------- Pembungkus SVG ---------- */
-function svgWrap(inner, W, H, extra = "") {
+/* fit "none" (default): wrapper tinggi tetap H px, SVG meregang ke lebar
+   container (perilaku lama, seperti canvas dulu) — teks ikut meregang
+   bila aspek container ≠ aspek viewBox. fit "meet": wrapper mengikuti
+   aspek viewBox (aspect-ratio), SVG diskala seragam — teks TIDAK
+   terdistorsi di layar lebar/sempit. Dipakai grafik Histori (temuan
+   responsif 2026-11-07: label sumbu-X melebar saat fullscreen). */
+function svgWrap(inner, W, H, extra = "", fit = "none") {
+  if (fit === "meet") {
+    return `<div class="chart-wrap" style="position:relative;aspect-ratio:${W}/${H};${extra}"><svg width="100%" height="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img">${inner}</svg></div>`;
+  }
   return `<div class="chart-wrap" style="position:relative;height:${H}px;${extra}"><svg width="100%" height="100%" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img">${inner}</svg></div>`;
 }
 
@@ -242,7 +256,7 @@ function leftMargin(tickLabels) {
 
 /* ---------- Grafik area (histori portofolio / arus kas kumulatif) ---------- */
 /* Tinggi mengikuti normalisasi lama: Histori 235px, Arus Kas ("cum") 180px. */
-function areaChart({ w = 1024, h = 180, values, labels, ymin, ymax, color = "var(--chart-1)", formatY = (v) => v, id = "g" }) {
+function areaChart({ w = 1024, h = 180, values, labels, ymin, ymax, color = "var(--chart-1)", formatY = (v) => v, id = "g", uniform = false }) {
   const t = themeColors();
   const col = resolveColor(color, t.chart1);
   const H = id === "cum" ? 180 : 235;
@@ -277,7 +291,7 @@ function areaChart({ w = 1024, h = 180, values, labels, ymin, ymax, color = "var
     s += `<circle cx="${r2(x(i))}" cy="${r2(y(v))}" r="10" fill="transparent" data-tip="${escAttr(tip)}"/>`;
   });
   s += `<circle cx="${r2(x(n - 1))}" cy="${r2(y(values[n - 1]))}" r="4" fill="${escAttr(col)}" data-tip="${escAttr(`${labs[n - 1]}: ${formatY(values[n - 1])}`)}"/>`;
-  return svgWrap(s, W, H);
+  return svgWrap(s, W, H, "", uniform ? "meet" : "none");
 }
 
 /* ---------- Donat ---------- */

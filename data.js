@@ -70,7 +70,10 @@ const DATA = {
     total: 1284560000, modal: 1150000000, profit: 134560000, profitPct: 11.70,
     best: { kode: "BBCA", nama: "Bank Central Asia", chg: 18.4 },
     worst: { kode: "GOTO", nama: "GoTo Gojek Tokopedia", chg: -22.1 },
-    // Seri histori disintesis (DESIGN hanya memberi total) — berlabel Dummy.
+    // Seri histori BULANAN disintesis (DESIGN hanya memberi total) — berlabel Dummy.
+    // TIDAK lagi dipakai grafik Histori Ringkasan sejak revisi responsif
+    // 2026-11-07 (semua retensi kini memakai historyDaily); dipertahankan
+    // sebagai seri acuan bulanan.
     history: {
       labels: ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov"],
       values: [1150, 1170, 1155, 1200, 1190, 1230, 1220, 1250, 1240, 1270, 1284.56],

@@ -394,14 +394,16 @@ function removeFromWatchlist(kode) {
    Layar 08 Sentimen. */
 const HIST_RANGES = ["7 hari", "30 hari", "90 hari", "180 hari", "1 tahun"];
 const HIST_DAYS = { "7 hari": 7, "30 hari": 30, "90 hari": 90, "180 hari": 180 };
-/* Seri histori sesuai retensi aktif. "1 tahun" memakai seri bulanan
-   Jan–Nov; retensi hari memakai seri harian (berakhir 6 Nov 2026). */
+/* Seri histori sesuai retensi aktif. SEMUA retensi memakai seri HARIAN
+   (berakhir 6 Nov 2026) — termasuk "1 tahun" (365 titik); retensi hari
+   memakai irisan N titik terakhir. Label sumbu-X: tanggal ("31 Okt")
+   untuk retensi hari, nama bulan ("Jan", "Mar", ...) untuk 1 tahun. */
 function histSeries() {
+  const d = DATA.portfolio.historyDaily;
   if (state.histRange === "1 tahun") {
-    return { values: DATA.portfolio.history.values, labels: DATA.portfolio.history.labels };
+    return { values: d.values, labels: d.labels.map((l) => l.split(" ")[1]) };
   }
   const n = HIST_DAYS[state.histRange] || 30;
-  const d = DATA.portfolio.historyDaily;
   return { values: d.values.slice(-n), labels: d.labels.slice(-n) };
 }
 /* Strip ticker (FigCraft v1.3): 5 aset, nama pendek sesuai desain
@@ -547,13 +549,13 @@ function sRingkasan() {
   const ymin = Math.floor((hMin - 15) / 10) * 10, ymax = Math.ceil((hMax + 15) / 10) * 10;
   const hist = areaChart({
     w: 1024, h: 200, values: histVals, labels: histLabels,
-    ymin, ymax, id: "hist",
+    ymin, ymax, id: "hist", uniform: true,
     formatY: (v) => "Rp " + fmtNum(v / 1000, 2) + " M"
   });
   return `
   ${tickerStrip()}
   <div class="card mt">
-    <div class="card-head"><h2>Histori Portofolio</h2><div class="row" style="gap:4px">${HIST_RANGES.map((r) => `<button class="tab ${state.histRange === r ? "active" : ""}" data-action="hist-range" data-range="${r}">${r}</button>`).join("")}${srcTag()}</div></div>
+    <div class="card-head"><h2>Histori Portofolio</h2><div class="row" style="gap:4px;flex-wrap:wrap">${HIST_RANGES.map((r) => `<button class="tab ${state.histRange === r ? "active" : ""}" data-action="hist-range" data-range="${r}">${r}</button>`).join("")}${srcTag()}</div></div>
     <div class="chart-wrap">${hist}</div>
     <div class="card-foot">Sumbu Y mulai Rp ${fmtNum(ymin / 1000, 2)} M, data dummy (seri disintesis).</div>
   </div>
