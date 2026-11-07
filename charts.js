@@ -44,7 +44,7 @@
 function escAttr(s) { return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;"); }
 function escHtml(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
-const FONT = "Inter, system-ui, sans-serif";
+const FONT = "Geist, Inter, system-ui, sans-serif";
 /* Pembulatan koordinat supaya string SVG tetap pendek. */
 const r2 = (v) => Math.round(v * 100) / 100;
 /* Perkiraan lebar teks (px) pada font 11px — dipakai untuk margin kiri
@@ -155,7 +155,7 @@ function ensureTooltip() {
     const div = document.createElement("div");
     div.id = "d3Tip";
     div.className = "d3-tip";
-    div.setAttribute("style", "position:fixed;left:0;top:0;z-index:9999;pointer-events:none;display:none;max-width:280px;padding:8px 10px;font:12px/1.5 Inter,system-ui,sans-serif;background:var(--surface-raised,#F0F3F9);color:var(--text-secondary,#475569);border:1px solid var(--border-strong,#C5CFE0);border-radius:8px;box-shadow:0 4px 16px rgba(15,23,42,.18);");
+    div.setAttribute("style", "position:fixed;left:0;top:0;z-index:9999;pointer-events:none;display:none;max-width:280px;padding:8px 10px;font:12px/1.5 Geist,Inter,system-ui,sans-serif;background:var(--surface-raised,#F0F3F9);color:var(--text-secondary,#475569);border:1px solid var(--border-strong,#C5CFE0);border-radius:8px;box-shadow:0 4px 16px rgba(15,23,42,.18);");
     if (document.body) document.body.appendChild(div);
     __tipEl = div;
     return div;

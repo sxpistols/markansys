@@ -6,14 +6,14 @@
   --bg-base: #0B1220; --bg-sidebar: #0E1627;
   --surface-card: #121C30; --surface-raised: #18243B;
   --border-default: #24324D; --border-strong: #34456A;
-  --primary-default: #3B82F6; --primary-hover: #5B9BFF; --primary-subtle: #16294A;
+  --primary-default: #2563EB; --primary-hover: #5B9BFF; --primary-subtle: #16294A;
   --secondary-default: #10B981; --secondary-subtle: #0F2E2A;
   --text-primary: #E8EEFA; --text-secondary: #A6B3CE; --text-muted: #7385A8;
   --text-on-primary: #FFFFFF;
   --state-success: #22C55E; --state-warning: #F59E0B; --state-error: #F87171; --state-info: #38BDF8;
   --market-up: #34D399; --market-up-subtle: #0F2E26;
   --market-down: #F87171; --market-down-subtle: #3A1A22; --market-flat: #7385A8;
-  --chart-1: #3B82F6; --chart-2: #10B981; --chart-3: #A78BFA; --chart-4: #F59E0B; --chart-5: #38BDF8; --chart-6: #94A3B8;
+  --chart-1: #2563EB; --chart-2: #10B981; --chart-3: #A78BFA; --chart-4: #F59E0B; --chart-5: #38BDF8; --chart-6: #94A3B8;
   --shadow-modal: 0 8px 24px rgba(0, 0, 0, 0.24);
 }
 :root[data-theme="light"] {
@@ -35,7 +35,7 @@
 html, body { margin: 0; padding: 0; }
 body {
   background: var(--bg-base); color: var(--text-primary);
-  font-family: "Inter", system-ui, sans-serif; font-size: 14px; line-height: 22px;
+  font-family: "Geist", "Inter", system-ui, sans-serif; font-size: 14px; line-height: 22px;
   -webkit-font-smoothing: antialiased;
 }
 h1 { font-size: 28px; line-height: 36px; font-weight: 700; margin: 0; }

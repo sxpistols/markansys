@@ -614,6 +614,7 @@ function sWatchlist() {
     </tr>`;
   }).join("") : `<tr><td colspan="10" class="muted">${soonTab ? "Tab ini berlabel Segera. Data belum tersedia di versi contoh." : "Tidak ada saham yang cocok dengan filter atau pencarian."}</td></tr>`;
   return `
+  ${tickerStrip()}
   <div class="tabs">${tabs.map(([k, lb]) => {
     const soon = k !== "IDX" && k !== "Kripto";
     return `<button class="tab ${state.watchTab === k ? "active" : ""}" data-action="watch-tab" data-tab="${k}"${soon ? ' disabled title="Segera — belum tersedia di versi contoh" style="opacity:.55;cursor:not-allowed"' : ""}>${lb}${soon ? '<span class="soon">Segera</span>' : ""}</button>`;
@@ -685,6 +686,7 @@ function sAnalisis() {
     ${open ? `<tr><td></td><td colspan="7">${reasonCards(r)}</td></tr>` : ""}`;
   }).join("");
   return `
+  ${tickerStrip()}
   <div class="grid grid-3">
     <div class="card" title="Menilai kesehatan keuangan perusahaan: laba, utang, dan dividen."><h3>Fundamental</h3><p>Kesehatan keuangan perusahaan: laba, utang, dividen.</p></div>
     <div class="card" title="Membaca arah harga dan momentum dari grafik."><h3>Teknikal</h3><p>Arah harga dan momentum dari grafik.</p></div>
@@ -803,6 +805,7 @@ function sDetail() {
     <p class="small" style="margin-top:16px">Skor sentimen dihitung otomatis dan bisa keliru.</p>`;
   }
   return `
+  ${tickerStrip()}
   <div class="row" style="flex-wrap:wrap">
     <div><h2 style="font-size:36px;line-height:44px;margin:0">BBCA</h2>
       <p style="font-size:22px;line-height:28px;margin:4px 0 0">Bank Central Asia</p>
@@ -865,6 +868,7 @@ function sDCF() {
     <div class="field"><label>${label} <strong class="num" style="float:right">${fmtNum(d[key], 1)}${unit}</strong></label>
     <input type="range" min="${min}" max="${max}" step="${step}" value="${d[key]}" data-dcf="${key}" aria-label="${label}"></div>`;
   return `
+  ${tickerStrip()}
   <div class="row" style="margin-bottom:16px; flex-wrap:wrap">
     <select class="input" style="width:320px" aria-label="Pilih saham"><option>BBCA &mdash; Bank Central Asia</option></select>
     <span class="muted">Harga pasar ${fmtRp(DATA.dcf.hargaPasar)}</span>
@@ -956,6 +960,7 @@ function sProyek() {
   const cfInputs = p.arusKas.map((v, i) =>
     `<div class="field"><label>Arus kas tahun ${i + 1} (Rp)</label><input class="input num" type="number" step="50000000" value="${v}" data-pcf="${i}"></div>`).join("");
   return `
+  ${tickerStrip()}
   <div class="row" style="margin-bottom:16px; flex-wrap:wrap">
     <select class="input" style="width:320px" aria-label="Pilih proyek"><option>${esc(DATA.project.nama)}</option>${DATA.project.lainnya.map((n) => `<option disabled>${esc(n)} (segera)</option>`).join("")}</select>
     <button class="btn btn-ghost" data-action="new-project">Proyek Baru</button>
@@ -1011,6 +1016,7 @@ function sAlert() {
       <div><strong>${esc(h.teks)}</strong><div class="sub">${h.waktu}</div></div>
       <span class="badge badge-neutral">${h.kanal}</span></div>`).join("");
   return `
+  ${tickerStrip()}
   <div class="row space-between" style="margin-bottom:16px">
     <div class="tabs fixb-text-tabs" style="margin-bottom:0">
       <button class="tab ${tab === "aktif" ? "active" : ""}" data-action="alert-tab" data-tab="aktif">Aktif</button>
@@ -1044,6 +1050,7 @@ function sSentimen() {
   if (state.newsFilter.tanggal !== "Semua") news = news.filter((n) => n.tanggal === state.newsFilter.tanggal);
   news = filteredRows(news, ["judul", "sumber"]);
   return `
+  ${tickerStrip()}
   <div class="grid grid-2">
     <div class="card"><h2>Ringkasan Sentimen Pasar</h2>
       <div class="donut-flex" style="margin-top:12px">
@@ -1120,6 +1127,7 @@ function sTim() {
     labels: t.tren.labels
   });
   return `
+  ${tickerStrip()}
   <div class="row" style="margin-bottom:24px">
     <select class="input" id="teamPeriode" style="width:160px" aria-label="Periode">
       <option${state.teamPeriode === "Okt 2026" ? " selected" : ""}>Okt 2026</option>
@@ -1192,6 +1200,7 @@ function sKeadaan() {
   /* 11.4: hanya jam, tanpa tanggal (DATA.meta.updated dipangkas). */
   const updatedTime = DATA.meta.updated.replace(/^.*,\s*/, "");
   return `
+  ${tickerStrip()}
   <div class="grid grid-2 keadaan-grid">
     <div class="card"><p class="small">Kosong</p><h3>Belum ada saham di watchlist</h3>
       <p>Tambahkan saham untuk memantau harganya di sini.</p>
@@ -1213,6 +1222,7 @@ function sKeadaan() {
 /* ---------- Layar 12 — Usulan Nama ---------- */
 function sNama() {
   return `
+  ${tickerStrip()}
   <div class="card"><p style="color:var(--text-primary);margin:0">Nama kerja tetap dipakai di seluruh UI: <strong>Asisten Analisis Investasi</strong>. Tiga usulan di bawah ini hanya alternatif.</p></div>
   <div class="grid grid-3 mt nama-grid">
     ${DATA.names.map((n) => `
