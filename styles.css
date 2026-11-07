@@ -160,6 +160,12 @@ input[type="range"] { width: 100%; accent-color: var(--primary-default); }
 .card-head h2 { font-size: 16px; line-height: 24px; }
 .card-foot { margin-top: 12px; font-size: 12px; line-height: 18px; color: var(--text-muted); }
 .grid { display: grid; gap: 24px; }
+/* Cegah "grid blowout": item grid (kartu) min-width-nya auto (= min-content
+   isinya) sehingga track 1fr ikut melebar mengikuti konten terlebar —
+   di HP, tabel Wawasan (min-content ~420px) memaksa kartu 420px dan halaman
+   terpotong di kanan walau tabelnya sendiri sudah scroll. min-width:0
+   membuat track tepat selebar wadah; tabel scroll di dalam kartu. */
+.grid > * { min-width: 0; }
 .grid-4 { grid-template-columns: repeat(4, 1fr); }
 .grid-3 { grid-template-columns: repeat(3, 1fr); }
 .grid-2 { grid-template-columns: repeat(2, 1fr); }
